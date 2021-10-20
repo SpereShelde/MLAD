@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from classic_rnn.TemporalCrudeAttention import TemporalCrudeAttention
 import os
 from DatasetReader import DatasetReader
+from keras_multi_head import MultiHead
 
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -163,7 +164,7 @@ def multi_time_serial_lstm(monitor_window_length, window_sample_interval, target
     for i in range(feature_size):
         plt.subplot(rows, math.ceil(feature_size/rows), i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='predict', c='b', marker='.')
+        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{feature_names[i]}')
 
     # sorted_outputs = np.array(list(map(list, zip(*flat_results[:plot_length])))[0])
@@ -232,13 +233,13 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
     outputs = model(inputs_test)
 
     plt.figure(figsize=(30, 16))
-    plt.suptitle(f'{feature_size} Features LSTM - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs')
+    plt.suptitle(f'{feature_size} Features LSTM Crude Attn - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs')
 
     rows = min(4, feature_size)
     for i in range(feature_size):
         plt.subplot(rows, math.ceil(feature_size/rows), i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='predict', c='b', marker='.')
+        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{feature_names[i]}')
 
     # sorted_outputs = np.array(list(map(list, zip(*flat_results[:plot_length])))[0])
@@ -284,15 +285,15 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
     model = keras.Sequential()
-    model.add(layers.Bidirectional(layers.LSTM(128, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, activation='relu')))
-    model.add(layers.MultiHeadAttention(num_heads=2, key_dim=2))
-    model.add(layers.Dense(32))
+    model.add(MultiHead(layers.Bidirectional(layers.LSTM(128, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, activation='relu')), layer_num=5, name='Multi-LSTMs'))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(64))
     model.add(layers.Dense(feature_size))
     model.build(input_shape=(batch_size, monitor_window_length, feature_size))
     model.compile(optimizer='adam', loss=loss_fn)
 
-    model.summary()
-    exit(0)
+    # model.summary()
+    # exit(0)
 
     model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
 
@@ -305,13 +306,13 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
     outputs = model(inputs_test)
 
     plt.figure(figsize=(30, 16))
-    plt.suptitle(f'{feature_size} Features LSTM - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs')
+    plt.suptitle(f'{feature_size} Features LSTM Transformer Attn - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs')
 
     rows = min(4, feature_size)
     for i in range(feature_size):
         plt.subplot(rows, math.ceil(feature_size/rows), i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='predict', c='b', marker='.')
+        plt.plot(x, np.array(normalized_test_data_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{feature_names[i]}')
 
     # sorted_outputs = np.array(list(map(list, zip(*flat_results[:plot_length])))[0])
@@ -322,22 +323,31 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
     #     plt.scatter(x, sorted_targets[:, 0, i].reshape(1, -1), label='target', c='b', marker='x')
     #     plt.title(f'{feature_names[i]}')
     for i in range(1, 10):
-        file_name = f"mul-lstm-res{res}-{i}.png"
+        file_name = f"mul-lstm-transformer-attn-res{res}-{i}.png"
         if not os.path.exists(os.path.join(ROOT_DIR, "results", file_name)):
             plt.savefig(os.path.join(ROOT_DIR, "results", file_name))
             # plt.show()
             break
 
+multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=300, target_skip_steps=0, batch_size=128, epochs_num=1, feature_names=[])
+exit(0)
 
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=100, window_sample_interval=50, target_skip_steps=0, batch_size=64, epochs_num=1, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# exit(0)
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=12, feature_names=[])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=12, feature_names=[])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=12, feature_names=[])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=12, feature_names=[])
+exit(0)
 
 # multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
 # multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
 # multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
 # multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
-multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
+# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
+# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
 
 
 # for i in range(4):

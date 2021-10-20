@@ -199,37 +199,45 @@ class DatasetReader:
         return
 
     def get_all_features(self, size=10):
-        feature_names = []
-        selected_feature_names = []
-        for dset in traverse_datasets(list(self.files.values())[0]):
-            feature_names.append(dset)
+        feature_names_set = set()
 
-        feature_names = shuffle(feature_names)
-        idx = 0
-        while len(selected_feature_names) < size:
-            try:
-                for file_name in self.files.keys():
-                    _a = self.files[file_name][feature_names[idx]]
-            except Exception as e:
-                idx += 1
-                continue
-            selected_feature_names.append(feature_names[idx])
-            idx += 1
+        for file_name, file in self.files.items():
+            feature_names_in_one_set = set()
+            for dset in traverse_datasets(file):
+                data = file[dset]
+                if len(data.shape) < 2:
+                    continue
+                var = np.var(data[:, 0], axis=-1)
+                # if dset == "/CAN/EngineSpeed_CAN":
+                #     print(dset)
+                #     print(file_name)
+                #     print(data.shape)
+                #     print(var)
+                if var > 1:
+                    feature_names_in_one_set.add(dset)
 
-        return selected_feature_names
+            if len(feature_names_set) == 0:
+                feature_names_set = feature_names_in_one_set
+            else:
+                feature_names_set = feature_names_set.intersection(feature_names_in_one_set)
+
+        feature_names = shuffle(list(feature_names_set))
+
+        return feature_names[:size]
 
 
 if __name__ == '__main__':
-    data_reader = DatasetReader(["20181203_Driver1_Trip10.hdf"])
+    data_reader = DatasetReader(["20181113_Driver1_Trip1.hdf", "20181117_Driver1_Trip7.hdf"])
     #  /CAN/BoostPressure /CAN/AccPedal /CAN/EngineSpeed_CAN
 
     # print(data_reader.get_all_features())
     # exit(0)
     #
-    data_reader.print_structure(["20181203_Driver1_Trip10.hdf"])
+    # data_reader.print_structure(["20181203_Driver1_Trip10.hdf"])
+    # exit(0)
+    data_reader.print_structure(["20181113_Driver1_Trip1.hdf"])
     exit(0)
-
-    data_reader.draw_one_path("20181203_Driver1_Trip10.hdf", "/CAN/SelectorLeverDMU")
+    data_reader.draw_one_path("20181117_Driver1_Trip7.hdf", "/CAN/SCS_Tip_Restart")
     exit(0)
     data_reader.draw_one_path("20181113_Driver1_Trip1.hdf", "/Plugins/Velocity_X")
     data_reader.draw_one_path("20181113_Driver1_Trip1.hdf", "CAN/EngineSpeed_CAN")
