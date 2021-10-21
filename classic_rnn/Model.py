@@ -11,6 +11,8 @@ import os
 from DatasetReader import DatasetReader
 from keras_multi_head import MultiHead
 
+# os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
+# os.environ["TF_CPP_VMODULE"]="gpu_process_state=10,gpu_cudamallocasync_allocator=10"
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -137,7 +139,7 @@ def multi_time_serial_lstm(monitor_window_length, window_sample_interval, target
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
     model = keras.Sequential()
-    model.add(layers.Bidirectional(layers.LSTM(256, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, activation='relu')))
+    model.add(layers.Bidirectional(layers.LSTM(256, dropout=0.05, return_sequences=False)))
     model.add(layers.Dense(64))
     model.add(layers.Dense(16))
     model.add(layers.Dense(feature_size))
@@ -212,7 +214,7 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
     model = keras.Sequential()
-    model.add(layers.Bidirectional(layers.LSTM(128, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, activation='relu')))
+    model.add(layers.Bidirectional(layers.LSTM(128, dropout=0.05, return_sequences=False)))
     model.add(TemporalCrudeAttention(return_sequences=True))
     model.add(layers.Dense(32))
     model.add(layers.Dense(feature_size))
@@ -285,7 +287,7 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
     model = keras.Sequential()
-    model.add(MultiHead(layers.Bidirectional(layers.LSTM(128, dropout=0.05, recurrent_dropout=0.05, return_sequences=False, activation='relu')), layer_num=5, name='Multi-LSTMs'))
+    model.add(MultiHead(layers.Bidirectional(layers.LSTM(128, dropout=0.05, return_sequences=False)), layer_num=5, name='Multi-LSTMs'))
     model.add(layers.Flatten())
     model.add(layers.Dense(64))
     model.add(layers.Dense(feature_size))
@@ -301,9 +303,19 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
     print(res)
 
     plot_length = min(4000, ((inputs_test.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
+
+    ploted = 0
+    outputs = []
+    while ploted < plot_length:
+        to_plot = min(plot_length, ploted+1000)
+        outputs.append(model(inputs_test[ploted:to_plot,:,:]))
+        ploted += 1000
     x = np.arange(plot_length).reshape(-1, 1)
-    inputs_test = inputs_test[:plot_length]
-    outputs = model(inputs_test)
+    outputs = np.vstack(outputs)
+
+    # x = np.arange(plot_length).reshape(-1, 1)
+    # inputs_test = inputs_test[:plot_length]
+    # outputs = model(inputs_test)
 
     plt.figure(figsize=(30, 16))
     plt.suptitle(f'{feature_size} Features LSTM Transformer Attn - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs')
@@ -329,26 +341,24 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length, window_s
             # plt.show()
             break
 
-multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=300, target_skip_steps=0, batch_size=128, epochs_num=1, feature_names=[])
+# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=[])
 exit(0)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
 
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=64, epochs_num=4, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=12, feature_names=[])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=12, feature_names=[])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=12, feature_names=[])
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=12, feature_names=[])
-exit(0)
-
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=6, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=6, feature_names=[])
-
+multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
+multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=[])
+multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=[])
 
 # for i in range(4):
 #     print(i+1)

@@ -12,6 +12,18 @@ from sklearn.utils import shuffle
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+feature_name_white_list = ['/Plugins/Magnetometer_Z', '/Plugins/Gyroscope_Z', '/Plugins/Accelerometer_X',
+                           '/CAN/WheelSpeed_RL', '/Plugins/GNSS_status', '/CAN/WheelSpeed_RR', '/CAN/WheelSpeed_FR',
+                           '/CAN/EngineSpeed_CAN', '/GPS/Direction', '/CAN/ENG_Trq_ZWR', '/CAN/AccPedal',
+                           '/Plugins/Slip_angle', '/CAN/Yawrate1', '/CAN/VehicleSpeed', '/GPS/Used satellites',
+                           '/CAN/Trq_FrictionLoss', '/Plugins/Magnetometer_Y', '/GPS/Z', '/CAN/Trq_Indicated',
+                           '/CAN/OilTemperature1', '/CAN/WheelSpeed_FL', '/Plugins/Body_acceleration_X',
+                           '/CAN/ENG_Trq_DMD', '/Plugins/Magnetometer_X', '/CAN/EngineTemperature', '/Plugins/Pitch',
+                           '/GPS/Acceleration', '/Plugins/Gyroscope_X', '/Plugins/Velocity_X', '/Plugins/Gyroscope_Y',
+                           '/GPS/Velocity', '/CAN/ENG_Trq_m_ex', '/GPS/Distance', '/CAN/SteerAngle1',
+                           '/CAN/AirIntakeTemperature']
+feature_name_grey_list = ['/CAN/Engine_02_BZ', '/CAN/Engine_02_CHK', '/CAN/SCS_01_BZ', '/CAN/SCS_01_CHK']
+
 
 def h5py_dataset_iterator(g, prefix=''):
     for key in g.keys():
@@ -194,51 +206,49 @@ class DatasetReader:
         file = self.files[file_name]
         data_time_serial = np.array(file[feature_name])
         print(data_time_serial.shape)
-        plt.plot(data_time_serial[:, 1], data_time_serial[:, 0])
+        plt.plot(data_time_serial[-500:, 1], data_time_serial[-500:, 0])
+        plt.title(feature_name)
         plt.show()
         return
 
     def get_all_features(self, size=10):
-        feature_names_set = set()
-
-        for file_name, file in self.files.items():
-            feature_names_in_one_set = set()
-            for dset in traverse_datasets(file):
-                data = file[dset]
-                if len(data.shape) < 2:
-                    continue
-                var = np.var(data[:, 0], axis=-1)
-                # if dset == "/CAN/EngineSpeed_CAN":
-                #     print(dset)
-                #     print(file_name)
-                #     print(data.shape)
-                #     print(var)
-                if var > 1:
-                    feature_names_in_one_set.add(dset)
-
-            if len(feature_names_set) == 0:
-                feature_names_set = feature_names_in_one_set
-            else:
-                feature_names_set = feature_names_set.intersection(feature_names_in_one_set)
-
-        feature_names = shuffle(list(feature_names_set))
-
-        return feature_names[:size]
+        # feature_names_set = set()
+        #
+        # for file_name, file in self.files.items():
+        #     feature_names_in_one_set = set()
+        #     for dset in traverse_datasets(file):
+        #         data = file[dset]
+        #         if len(data.shape) < 2:
+        #             continue
+        #         var = np.var(data[:, 0], axis=-1)
+        #         if var > 1:
+        #             feature_names_in_one_set.add(dset)
+        #
+        #     if len(feature_names_set) == 0:
+        #         feature_names_set = feature_names_in_one_set
+        #     else:
+        #         feature_names_set = feature_names_set.intersection(feature_names_in_one_set)
+        #
+        # feature_names = shuffle(list(feature_names_set))
+        np.random.shuffle(feature_name_white_list)
+        return feature_name_white_list[:size]
 
 
 if __name__ == '__main__':
-    data_reader = DatasetReader(["20181113_Driver1_Trip1.hdf", "20181117_Driver1_Trip7.hdf"])
-    #  /CAN/BoostPressure /CAN/AccPedal /CAN/EngineSpeed_CAN
+    data_reader = DatasetReader(["20181117_Driver1_Trip7.hdf"])
 
-    # print(data_reader.get_all_features())
-    # exit(0)
+    # file = data_reader.files["20181117_Driver1_Trip7.hdf"]
+    # feature_names_in_one_set = set()
+    # for dset in traverse_datasets(file):
+    #     data = file[dset]
+    #     if len(data.shape) < 2:
+    #         continue
+    #     var = np.var(data[:, 0], axis=-1)
+    #     if var > 1:
+    #         feature_names_in_one_set.add(dset)
+    #         data_reader.draw_one_path("20181117_Driver1_Trip7.hdf", dset)
     #
-    # data_reader.print_structure(["20181203_Driver1_Trip10.hdf"])
+    # print(feature_names_in_one_set)
+    # data_reader.print_structure(["20181113_Driver1_Trip1.hdf"])
     # exit(0)
-    data_reader.print_structure(["20181113_Driver1_Trip1.hdf"])
-    exit(0)
-    data_reader.draw_one_path("20181117_Driver1_Trip7.hdf", "/CAN/SCS_Tip_Restart")
-    exit(0)
-    data_reader.draw_one_path("20181113_Driver1_Trip1.hdf", "/Plugins/Velocity_X")
-    data_reader.draw_one_path("20181113_Driver1_Trip1.hdf", "CAN/EngineSpeed_CAN")
-    data_reader.draw_one_path("20181113_Driver1_Trip1.hdf", "CAN/VehicleSpeed")
+    data_reader.draw_one_path("20181117_Driver1_Trip7.hdf", "/GPS/Distance")
