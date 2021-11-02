@@ -111,7 +111,6 @@ def prin_input(inputs_train, targets_train, sample_weights, feature_size, monito
 #             # plt.show()
 #             break
 
-
 def multi_time_serial_lstm(monitor_window_length, window_sample_interval, target_skip_steps, batch_size, epochs_num, feature_names):
     data_reader = DatasetReader(
         [
@@ -482,8 +481,6 @@ train_files = [
 # exit(0)
 
 # model_test(train_files=train_files, test_file='20181117_Driver1_Trip7.hdf', feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=50, target_skip_steps=0)
-# model_test(train_files=train_files, test_file='20181117_Driver1_Trip7.hdf', feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=50, target_skip_steps=1)
-# model_test(train_files=train_files, test_file='20181117_Driver1_Trip7.hdf', feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
 
 # for test_file in test_files:
 #     model_test(train_files=train_files, test_file=test_file, feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
@@ -496,33 +493,3 @@ model_test(train_files=train_files, test_file='20181117_Driver1_Trip7.hdf', feat
 # multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=1, batch_size=64, epochs_num=5, feature_names=selected_features, layer_num=12)
 #multi_time_serial_lstm_transformer_attention(monitor_window_length=20, window_sample_interval=10, target_skip_steps=0, batch_size=64, epochs_num=10, feature_names=selected_features, layer_num=12)
 #multi_time_serial_lstm_transformer_attention(monitor_window_length=20, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=10, feature_names=selected_features, layer_num=12)
-
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=[])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=[])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-#multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=selected_features)
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=4, feature_names=selected_features, layer_num=16)
-# multi_time_serial_lstm_transformer_attention(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=64, epochs_num=4, feature_names=selected_features, layer_num=12)
-
-
-#exit(0)
-#multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=['CAN/EngineSpeed_CAN', 'CAN/VehicleSpeed', '/Plugins/Velocity_X'])
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=0, batch_size=128, epochs_num=20, feature_names=[])
-# multi_time_serial_lstm(monitor_window_length=50, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=[])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=9, batch_size=128, epochs_num=20, feature_names=[])
-# multi_time_serial_lstm(monitor_window_length=200, window_sample_interval=10, target_skip_steps=4, batch_size=128, epochs_num=20, feature_names=[])
-
-# for i in range(4):
-#     print(i+1)
-
-#     except Exception as e:
-#         continue

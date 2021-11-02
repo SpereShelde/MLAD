@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/attention_test.iml" filepath="$PROJECT_DIR$/.idea/attention_test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/rnn_anomaly.iml" filepath="$PROJECT_DIR$/.idea/rnn_anomaly.iml" />
     </modules>
   </component>
 </project>
