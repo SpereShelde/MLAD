@@ -32,7 +32,7 @@ class DatasetReader:
     def __init__(self, file_names: typing.Iterable):
         self.files = {}
         for file_name in file_names:
-            self.files[file_name] = h5py.File(os.path.join(ROOT_DIR, "data", file_name), 'r')
+            self.files[file_name] = h5py.File(os.path.join(ROOT_DIR, "data", "canbus", file_name), 'r')
 
     def print_structure(self, file_names: list):
         for target_file in file_names:

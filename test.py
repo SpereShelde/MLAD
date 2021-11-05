@@ -7,10 +7,10 @@ from sklearn import linear_model
 import matplotlib.pyplot as plt
 
 # import tensorflow as tf
-from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+# from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
 
-latest_ckp = tf.train.latest_checkpoint('selected_features_models\\50-0-12layers-256-64')
-print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
+# latest_ckp = tf.train.latest_checkpoint('selected_features_models\\50-0-12layers-256-64')
+# print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
 
 # x = np.array([1000, 1100, 1200, 1300, 1400, 1500]).reshape((-1, 1))
 # y = np.array([math.radians(36), math.radians(30), math.radians(20), math.radians(14), math.radians(6), math.radians(0)]).reshape(-1)

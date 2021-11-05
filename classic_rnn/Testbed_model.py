@@ -19,6 +19,8 @@ from sklearn.preprocessing import MinMaxScaler
 
 def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, jump = 0, check=False, ignore_control = True):
     df = pd.read_csv(os.path.join(ROOT_DIR, '..', 'data', 'testbed', file_name))
+    df.drop(['Reference'], inplace=True, axis=1)
+
     feature_names = df.columns
     if ignore_control:
         omit_feature_ids = []
@@ -44,7 +46,7 @@ def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, 
             scaler = scalers[col]
             normalized_time_serials.append(scaler.transform(col_df))
     normalized_time_serials = np.hstack(normalized_time_serials)
-
+    # print(normalized_time_serials.shape)
     inputs = []
     targets = []
 
@@ -60,6 +62,9 @@ def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, 
 
     inputs = np.array(inputs)
     targets = np.array(targets)
+
+    # print(inputs.shape)
+    # exit(0)
 
     if check:
         print(f'input shape {inputs.shape}')
@@ -78,15 +83,22 @@ def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, 
 def loss_fn(y_true, y_pred):
     return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
 
-def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, window_sample_interval = 10, target_skip_steps = 0, batch_size = 64, epochs_num = 20, layer_num = 12, ignore_control = True, save_img = True):
-    train_inputs, train_targets, train_normalized_time_serials, features, _ = sample_from_csv('complete.csv', ignore_control=ignore_control)
-    test_inputs, test_targets, test_normalized_time_serials, _, _ = sample_from_csv('outside_at_end.csv', interval=0, ignore_control=ignore_control)
-
+def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, window_sample_interval = 10,
+                                                 target_skip_steps = 0, batch_size = 64, epochs_num = 20,
+                                                 layer_num = 12, ignore_control = True, save_img = True,
+                                                 dense_1_num = 128, dense_2_num = 32, cell_num = 128, bi=True):
+    train_inputs, train_targets, train_normalized_time_serials, features, train_scalers = sample_from_csv('room_train_kf.csv', window_size=monitor_window_length, interval=window_sample_interval, jump=target_skip_steps, check=True, ignore_control=ignore_control)
+    # test_inputs, test_targets, test_normalized_time_serials, _, _ = sample_from_csv('outside_at_end.csv', window_size=monitor_window_length, interval=0, jump=target_skip_steps, check=True, ignore_control=ignore_control, scalers=train_scalers)
+    test_inputs = train_inputs[-2000:]
+    test_targets = train_targets[-2000:]
+    test_normalized_time_serials = train_normalized_time_serials[-2000:]
+    train_inputs = train_inputs[:-2000]
+    train_targets = train_targets[:-2000]
+    train_normalized_time_serials = train_normalized_time_serials[:-2000]
 
     input_feature_size = train_inputs.shape[2]
     target_feature_size = train_targets.shape[2]
 
-    plot_length = min(500, ((train_inputs.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
 
     # inputs_train_diff_min = np.min(np.max(train_inputs, axis=1) - np.min(train_inputs, axis=1), axis=1)
     # sample_weights = np.select([inputs_train_diff_min < 0.05, inputs_train_diff_min < 0.1, inputs_train_diff_min >= 0.1], [1, 2, 3])
@@ -94,8 +106,8 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
 
-    dense_1_num = 256
-    dense_2_num = 64
+    # dense_1_num = 128
+    # dense_2_num = 32
 
     if ignore_control:
         model_name = f'{monitor_window_length}-{target_skip_steps}-{layer_num}layers-{dense_1_num}-{dense_2_num}-wout_ctrl/checkpoint'
@@ -105,7 +117,11 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
     model_path = os.path.join(ROOT_DIR, "models", "testbed_models", model_name)
 
     model = keras.Sequential()
-    model.add(MultiHead(layers.Bidirectional(layers.LSTM(128, return_sequences=False)), layer_num=layer_num))
+    if bi:
+        model.add(MultiHead(layers.Bidirectional(layers.LSTM(cell_num, return_sequences=False)), layer_num=layer_num))
+    else:
+        model.add(MultiHead(layers.LSTM(cell_num, return_sequences=False), layer_num=layer_num))
+
     model.add(layers.Flatten())
     model.add(layers.Dense(dense_1_num))
     model.add(layers.Dense(dense_2_num))
@@ -120,33 +136,44 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
         print("Load Model")
         model.load_weights(model_path)
 
-    model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True)
+    if epochs_num != 0:
+        model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True)
     # model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
-
-    model.save_weights(model_path)
+        model.save_weights(model_path)
 
     res = model.evaluate(test_inputs, test_targets)
     print(res)
 
-    ploted = 0
-    outputs = []
-    while ploted < plot_length:
-        to_plot = min(plot_length, ploted+100)
-        outputs.append(model(test_inputs[ploted:to_plot,:,:]))
-        ploted += 100
-    outputs = np.vstack(outputs)
-    plot_length = outputs.shape[0]
-    x = np.arange(plot_length).reshape(-1, 1)
+    # plot_length = min(500, ((train_inputs.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
+    plot_length = 200
+
+    if plot_length > 500:
+        ploted = 0
+        outputs = []
+        while ploted < plot_length:
+            to_plot = min(plot_length, ploted+100)
+            outputs.append(model(test_inputs[ploted:to_plot,:,:]))
+            ploted += to_plot
+        outputs = np.vstack(outputs)
+        plot_length = outputs.shape[0]
+        x = np.arange(plot_length).reshape(-1, 1)
+    else:
+        outputs = model(test_inputs[:plot_length])
+        x = np.arange(outputs.shape[0]).reshape(-1, 1)
+        # refs = [test_inputs[0, :, :].reshape([test_inputs.shape[1], test_inputs.shape[2]])]
+        # refs = test_inputs[1:,-1,:]
+        # for i in range(1, plot_length)
 
     plt.figure(figsize=(30, 16))
-    plt.suptitle(f'{target_feature_size} Features LSTM {layer_num} Layers Trans Attn - {monitor_window_length} TimeSteps - Jump {target_skip_steps} Steps - {window_sample_interval}StepInterval-{batch_size}Batch-{epochs_num}Epochs-Res-{res}', fontsize=30)
+    plt.suptitle(f'{target_feature_size}Feats - {layer_num}Lyrs - {monitor_window_length}ts - Jump{target_skip_steps} - {"Bi" if bi else ""}-{cell_num}-{dense_1_num}-{dense_2_num} - {window_sample_interval}Interval-{batch_size}Batch-{epochs_num}Epochs-Res-{res}', fontsize=30)
 
     for i in range(len(features)):
         plt.subplot(math.ceil(target_feature_size/2), 2, i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        plt.plot(x, np.array(test_normalized_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, features[i][0]]).reshape(-1, 1), label='target', c='b', marker='.')
+        # plt.plot(x, np.array(test_normalized_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, features[i][0]]).reshape(-1, 1), label='target', c='b', marker='.')
+        plt.plot(x, np.array(test_targets[:plot_length, 0, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{features[i][1]}')
-        # plt.xlim([900, 1000])
+        # plt.xlim([100, 200])
 
     if not save_img:
         plt.show()
@@ -160,11 +187,27 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
         #     plt.scatter(x, sorted_targets[:, 0, i].reshape(1, -1), label='target', c='b', marker='x')
         #     plt.title(f'{feature_names[i]}')
         for i in range(1, 10):
-            file_name = f"trans-attn-fs{target_feature_size}-ws{monitor_window_length}-jump{target_skip_steps}-res{res}-{i}.png"
+            file_name = f'{target_feature_size}Feats - {layer_num}Lyrs - {monitor_window_length}ts - Jump{target_skip_steps} - {"Bi" if bi else ""}-{cell_num}-{dense_1_num}-{dense_2_num} - {window_sample_interval}Interval-{batch_size}Batch-{epochs_num}Epochs-Res-{res}.png'
             if not os.path.exists(os.path.join(ROOT_DIR, "results", file_name)):
                 plt.savefig(os.path.join(ROOT_DIR, "results", file_name))
                 # plt.show()
                 break
 
-# todo:
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=10, target_skip_steps=0, batch_size=16, epochs_num=1, layer_num=2, ignore_control = True, save_img = False)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
+                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
+                                             dense_1_num=64, dense_2_num=16, cell_num=32, bi = False)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
+                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
+                                             dense_1_num=64, dense_2_num=16, cell_num=32, bi = False)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
+                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
+                                             dense_1_num=128, dense_2_num=32, cell_num=64)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
+                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
+                                             dense_1_num=128, dense_2_num=32, cell_num=64)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
+                                             batch_size=32, epochs_num=5, layer_num=10, ignore_control=True, save_img=True,
+                                             dense_1_num=256, dense_2_num=64, cell_num=128)
+multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
+                                             batch_size=32, epochs_num=5, layer_num=10, ignore_control=True, save_img=True,
+                                             dense_1_num=256, dense_2_num=64, cell_num=128)
