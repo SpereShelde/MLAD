@@ -276,7 +276,7 @@ train_files = [
     "20181117_Driver1_Trip8.hdf", "20181203_Driver1_Trip9.hdf", "20181203_Driver1_Trip10.hdf"
 ]
 
-# new_model = tf.keras.models.load_model('saved_model/my_model')
+# new_model = keras.models.load_model('saved_model/my_model', custom_objects={'loss_fn': loss_fn})
 # new_model.summary()
 # exit(0)
 
