@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from os import listdir
 from os.path import isfile
+from simple_kf import SimpleKF
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(ROOT_DIR, 'data', 'testbed')
@@ -12,6 +13,21 @@ data_dir = os.path.join(ROOT_DIR, 'data', 'testbed')
 # name = 'speed_attack_Linear_X_1.csv'
 
 attack_files = [f for f in listdir(data_dir) if isfile(os.path.join(data_dir, f)) and f[-3:] == "csv" and f[:12] == "speed_attack"]
+
+
+def plot_one_feature(feature_name, idx):
+    plt.subplot(5, 2, idx)
+    plt.title(feature_name)
+
+    plt.plot(plot_range_before, df[feature_name].iloc[plot_range_before], c='b', marker='.')
+    plt.plot(bias_range, df[feature_name].iloc[bias_range], c='r', marker='.')
+    plt.plot([plot_range_before[-1], bias_range[0]], [df[feature_name][plot_range_before[-1]], df[feature_name][bias_range[0]]], c='r', marker='.')
+    if attack_sensor == feature_name:
+        plt.plot([plot_range_before[-1], bias_range[0]], [df[feature_name][plot_range_before[-1]], df[feature_name][bias_range[0]] - df['Bias_val'][bias_range[0]]], c='b', marker='.')
+        plt.plot(bias_range, df[feature_name].iloc[bias_range] - df['Bias_val'].iloc[bias_range], c='b', marker='.')
+        plt.plot([bias_range[-1], plot_range_after[0]], [df[feature_name][bias_range[-1]] - df['Bias_val'][bias_range[-1]], df[feature_name][plot_range_after[0]]], c='b', marker='.')
+    plt.plot([bias_range[-1], plot_range_after[0]], [df[feature_name][bias_range[-1]], df[feature_name][plot_range_after[0]]], c='r', marker='.')
+    plt.plot(plot_range_after, df[feature_name].iloc[plot_range_after], c='b', marker='.')
 
 for name in attack_files:
 
@@ -34,25 +50,7 @@ for name in attack_files:
     plt.figure(figsize=(30, 16))
     plt.suptitle(name[:-4], fontsize=20)
 
-
-    def plot_one_feature(feature_name, idx):
-        plt.subplot(5, 2, idx)
-        plt.title(feature_name)
-
-        plt.plot(plot_range_before, df[feature_name].iloc[plot_range_before], c='b', marker='.')
-        plt.plot(bias_range, df[feature_name].iloc[bias_range], c='r', marker='.')
-        plt.plot([plot_range_before[-1], bias_range[0]], [df[feature_name][plot_range_before[-1]], df[feature_name][bias_range[0]]], c='r', marker='.')
-        if attack_sensor == feature_name:
-            plt.plot([plot_range_before[-1], bias_range[0]], [df[feature_name][plot_range_before[-1]], df[feature_name][bias_range[0]] - df['Bias_val'][bias_range[0]]], c='b', marker='.')
-            plt.plot(bias_range, df[feature_name].iloc[bias_range] - df['Bias_val'].iloc[bias_range], c='b', marker='.')
-            plt.plot([bias_range[-1], plot_range_after[0]], [df[feature_name][bias_range[-1]] - df['Bias_val'][bias_range[-1]], df[feature_name][plot_range_after[0]]], c='b', marker='.')
-        plt.plot([bias_range[-1], plot_range_after[0]], [df[feature_name][bias_range[-1]], df[feature_name][plot_range_after[0]]], c='r', marker='.')
-        plt.plot(plot_range_after, df[feature_name].iloc[plot_range_after], c='b', marker='.')
-
-    from simple_kf import SimpleKF
-
     plot_one_feature('Linear_X', 1)
-
 
     kf_vel_z = SimpleKF(0.5, 0.5, 0.5)
     vel_z = df['Linear_Z']

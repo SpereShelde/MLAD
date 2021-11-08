@@ -13,23 +13,27 @@ import os
 from DatasetReader import DatasetReader
 from keras_multi_head import MultiHead
 import pandas as pd
+
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 from sklearn.preprocessing import MinMaxScaler
 
-def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, jump = 0, check=False, ignore_control = True):
-    df = pd.read_csv(os.path.join(ROOT_DIR, '..', 'data', 'testbed', file_name))
-    df.drop(['Reference'], inplace=True, axis=1)
+
+def sample_from_csv(file_name, scalers=None, window_size=50, interval=10, jump=0, check=False):
+    df = pd.read_csv(os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', file_name))
+    try:
+        df.drop(['Reference'], inplace=True, axis=1)
+    except KeyError as e:
+        pass
 
     feature_names = df.columns
-    if ignore_control:
-        omit_feature_ids = []
-        for name in ['Throttle_Control', 'Servo_Control', 'Voltage', 'Throttle_A', 'Throttle_B', 'Servo', 'Linear_Y']:
-            omit_feature_ids.append(df.columns.get_loc(name))
-        remain_feature_ids = [id for id in range(len(feature_names)) if id not in omit_feature_ids]
-        # print(omit_features_id)
-        # print(remain_feature_ids)
-        # exit(0)
+    omit_feature_ids = []
+    for name in ['Throttle_Control', 'Servo_Control', 'Voltage', 'Throttle_A', 'Throttle_B', 'Servo', 'Linear_Y']:
+        omit_feature_ids.append(df.columns.get_loc(name))
+    remain_feature_ids = [id for id in range(len(feature_names)) if id not in omit_feature_ids]
+    # print(omit_features_id)
+    # print(remain_feature_ids)
+    # exit(0)
 
     normalized_time_serials = []
     if not scalers or len(scalers) == 0:
@@ -55,10 +59,7 @@ def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, 
     for i in range(0, normalized_time_serials.shape[0] - window_size - jump - 1, interval):
         a_sample = normalized_time_serials[i:i + window_size]
         inputs.append(a_sample)
-        if ignore_control:
-            targets.append([normalized_time_serials[i + jump + window_size, remain_feature_ids]])
-        else:
-            targets.append([normalized_time_serials[i + jump + window_size]])
+        targets.append([normalized_time_serials[i + jump + window_size, remain_feature_ids]])
 
     inputs = np.array(inputs)
     targets = np.array(targets)
@@ -74,20 +75,23 @@ def sample_from_csv(file_name, scalers = None, window_size = 50, interval = 10, 
         # for sc in scalers.values():
         #     print(sc.data_range_)
 
-    if ignore_control:
-        # return inputs, targets, normalized_time_serials, remain_feature_ids, scalers
-        return inputs, targets, normalized_time_serials, list(zip(remain_feature_ids, [feature_names[i] for i in range(len(feature_names)) if i in remain_feature_ids])), scalers
-    else:
-        return inputs, targets, normalized_time_serials, feature_names, scalers
+    return inputs, targets, normalized_time_serials, list(zip(remain_feature_ids,
+                                                              [feature_names[i] for i in range(len(feature_names))
+                                                               if i in remain_feature_ids])), scalers
+
 
 def loss_fn(y_true, y_pred):
     return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
 
-def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, window_sample_interval = 10,
-                                                 target_skip_steps = 0, batch_size = 64, epochs_num = 20,
-                                                 layer_num = 12, ignore_control = True, save_img = True,
-                                                 dense_1_num = 128, dense_2_num = 32, cell_num = 128, bi=True):
-    train_inputs, train_targets, train_normalized_time_serials, features, train_scalers = sample_from_csv('room_train_kf.csv', window_size=monitor_window_length, interval=window_sample_interval, jump=target_skip_steps, check=True, ignore_control=ignore_control)
+
+def lstm(window_len=50, sample_interval=10,
+         jump=0, batch_size=64, epochs_num=20,
+         attention=False, attn_layer=12,
+         dense_dim=32, cell_num=128, bi=True,
+         test_only=False, data_file="20181117_Driver1_Trip7.hdf", scenario='bare', plot_loss=False):
+    train_inputs, train_targets, train_normalized_time_serials, features, train_scalers = sample_from_csv(
+        data_file, window_size=window_len, interval=sample_interval, jump=jump,
+        check=True)
     # test_inputs, test_targets, test_normalized_time_serials, _, _ = sample_from_csv('outside_at_end.csv', window_size=monitor_window_length, interval=0, jump=target_skip_steps, check=True, ignore_control=ignore_control, scalers=train_scalers)
     test_inputs = train_inputs[-2000:]
     test_targets = train_targets[-2000:]
@@ -99,85 +103,77 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
     input_feature_size = train_inputs.shape[2]
     target_feature_size = train_targets.shape[2]
 
-
     # inputs_train_diff_min = np.min(np.max(train_inputs, axis=1) - np.min(train_inputs, axis=1), axis=1)
     # sample_weights = np.select([inputs_train_diff_min < 0.05, inputs_train_diff_min < 0.1, inputs_train_diff_min >= 0.1], [1, 2, 3])
 
     # prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps, rows=8, save=False, show=True)
 
-
-    # dense_1_num = 128
-    # dense_2_num = 32
-
-    if ignore_control:
-        model_name = f'{monitor_window_length}-{target_skip_steps}-{layer_num}layers-{dense_1_num}-{dense_2_num}-wout_ctrl/checkpoint'
-    else:
-        model_name = f'{monitor_window_length}-{target_skip_steps}-{layer_num}layers-{dense_1_num}-{dense_2_num}-with_ctrl/checkpoint'
-
-    model_path = os.path.join(ROOT_DIR, "models", "testbed_models", model_name)
-
     model = keras.Sequential()
+    a_layer = layers.LSTM(cell_num, dropout=0.05, return_sequences=False)
     if bi:
-        model.add(MultiHead(layers.Bidirectional(layers.LSTM(cell_num, return_sequences=False)), layer_num=layer_num))
-    else:
-        model.add(MultiHead(layers.LSTM(cell_num, return_sequences=False), layer_num=layer_num))
-
-    model.add(layers.Flatten())
-    model.add(layers.Dense(dense_1_num))
-    model.add(layers.Dense(dense_2_num))
+        a_layer = layers.Bidirectional(a_layer)
+    if attention:
+        a_layer = MultiHead(a_layer, layer_num=attn_layer)
+    model.add(a_layer)
+    if attention:
+        model.add(layers.Flatten())
+    model.add(layers.Dense(dense_dim))
     model.add(layers.Dense(target_feature_size))
-
-    model.build(input_shape=(batch_size, monitor_window_length, train_inputs.shape[2]))
+    model.build(input_shape=(batch_size, window_len, train_inputs.shape[2]))
     model.compile(optimizer='adam', loss=loss_fn)
-    # model.summary()
-    # exit(0)
+
+    model_name = f'{cell_num}cell-{"Bi" if bi else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_len}-jp{jump}-{dense_dim}/checkpoint'
+    model_path = os.path.join(ROOT_DIR, "models", "testbed_models", scenario, model_name)
 
     if os.path.exists(model_path):
         print("Load Model")
         model.load_weights(model_path)
 
-    if epochs_num != 0:
-        model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True)
-    # model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
+    if not test_only:
+        model.fit(train_inputs, train_targets, validation_split=0.2, batch_size=batch_size, epochs=epochs_num,
+                  shuffle=True)
+        # model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
         model.save_weights(model_path)
 
     res = model.evaluate(test_inputs, test_targets)
     print(res)
 
-    # plot_length = min(500, ((train_inputs.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
     plot_length = 200
 
-    if plot_length > 500:
-        ploted = 0
-        outputs = []
-        while ploted < plot_length:
-            to_plot = min(plot_length, ploted+100)
-            outputs.append(model(test_inputs[ploted:to_plot,:,:]))
-            ploted += to_plot
-        outputs = np.vstack(outputs)
-        plot_length = outputs.shape[0]
-        x = np.arange(plot_length).reshape(-1, 1)
-    else:
-        outputs = model(test_inputs[:plot_length])
-        x = np.arange(outputs.shape[0]).reshape(-1, 1)
-        # refs = [test_inputs[0, :, :].reshape([test_inputs.shape[1], test_inputs.shape[2]])]
-        # refs = test_inputs[1:,-1,:]
-        # for i in range(1, plot_length)
+    outputs = []
+    for i in range(0, test_inputs.shape[0], 100):
+        outputs.append(model(test_inputs[i:i+100, :, :]))
+    outputs = np.vstack(outputs)
+    x = np.arange(outputs.shape[0]).reshape(-1, 1)
+
+    title = f'{scenario} {cell_num}cells {"Bi" if bi else "Uni"} LSTM {f"{attn_layer}lyrs Attn" if attention else ""} - {dense_dim} - {window_len}TS - Jump{jump} - Res-{res:.5f}'
+
+    if plot_loss:
+        plt.figure(figsize=(30, 16))
+        plt.suptitle(f'loss - {title}', fontsize=30)
+        targets_test = test_targets.reshape([test_targets.shape[0], test_targets.shape[2]])
+        losses = np.abs(outputs - targets_test)
+        for i in range(target_feature_size):
+            plt.subplot(math.ceil(target_feature_size / 2), 2, i + 1)
+            feature_loss = losses[:, i]
+            plt.hist(x=feature_loss, bins='auto')
+            plt.grid(axis='y')
+            plt.title(f'{features[i]}')
+        for i in range(1, 10):
+            file_name = f'loss - {title}.png'
+            if not os.path.exists(os.path.join(ROOT_DIR, "results", 'testbed', scenario, file_name)):
+                plt.savefig(os.path.join(ROOT_DIR, "results", 'testbed', scenario, file_name))
+                # plt.show()
+                break
 
     plt.figure(figsize=(30, 16))
-    plt.suptitle(f'{target_feature_size}Feats - {layer_num}Lyrs - {monitor_window_length}ts - Jump{target_skip_steps} - {"Bi" if bi else ""}-{cell_num}-{dense_1_num}-{dense_2_num} - {window_sample_interval}Interval-{batch_size}Batch-{epochs_num}Epochs-Res-{res}', fontsize=30)
+    plt.suptitle(title, fontsize=30)
 
     for i in range(len(features)):
-        plt.subplot(math.ceil(target_feature_size/2), 2, i + 1)
+        plt.subplot(math.ceil(target_feature_size / 2), 2, i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        # plt.plot(x, np.array(test_normalized_time_serials[monitor_window_length+target_skip_steps:monitor_window_length+target_skip_steps+plot_length, features[i][0]]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.plot(x, np.array(test_targets[:plot_length, 0, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{features[i][1]}')
-        # plt.xlim([100, 200])
-
-    if not save_img:
-        plt.show()
-    else:
 
         # sorted_outputs = np.array(list(map(list, zip(*flat_results[:plot_length])))[0])
         # sorted_targets = np.array(list(map(list, zip(*flat_results[:plot_length])))[1])
@@ -186,28 +182,43 @@ def multi_time_serial_lstm_transformer_attention(monitor_window_length = 50, win
         #     plt.scatter(x, sorted_outputs[:, i].reshape(1, -1), label='predict', c='r', marker='+')
         #     plt.scatter(x, sorted_targets[:, 0, i].reshape(1, -1), label='target', c='b', marker='x')
         #     plt.title(f'{feature_names[i]}')
-        for i in range(1, 10):
-            file_name = f'{target_feature_size}Feats - {layer_num}Lyrs - {monitor_window_length}ts - Jump{target_skip_steps} - {"Bi" if bi else ""}-{cell_num}-{dense_1_num}-{dense_2_num} - {window_sample_interval}Interval-{batch_size}Batch-{epochs_num}Epochs-Res-{res}.png'
-            if not os.path.exists(os.path.join(ROOT_DIR, "results", file_name)):
-                plt.savefig(os.path.join(ROOT_DIR, "results", file_name))
-                # plt.show()
-                break
+    for i in range(1, 10):
+        file_name = f'{title}.png'
+        if not os.path.exists(os.path.join(ROOT_DIR, "results", 'testbed', scenario, file_name)):
+            plt.savefig(os.path.join(ROOT_DIR, "results", 'testbed', scenario, file_name))
+            # plt.show()
+            break
 
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
-                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
-                                             dense_1_num=64, dense_2_num=16, cell_num=32, bi = False)
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
-                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
-                                             dense_1_num=64, dense_2_num=16, cell_num=32, bi = False)
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
-                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
-                                             dense_1_num=128, dense_2_num=32, cell_num=64)
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
-                                             batch_size=32, epochs_num=20, layer_num=2, ignore_control=True, save_img=True,
-                                             dense_1_num=128, dense_2_num=32, cell_num=64)
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=0,
-                                             batch_size=32, epochs_num=5, layer_num=10, ignore_control=True, save_img=True,
-                                             dense_1_num=256, dense_2_num=64, cell_num=128)
-multi_time_serial_lstm_transformer_attention(monitor_window_length=50, window_sample_interval=1, target_skip_steps=1,
-                                             batch_size=32, epochs_num=5, layer_num=10, ignore_control=True, save_img=True,
-                                             dense_1_num=256, dense_2_num=64, cell_num=128)
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=1,
+     bi=False, attention=False, attn_layer=0,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=50,
+     bi=True, attention=False, attn_layer=0,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=50,
+     bi=False, attention=True, attn_layer=1,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=50,
+     bi=True, attention=True, attn_layer=1,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=50,
+     bi=True, attention=True, attn_layer=2,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
+lstm(window_len=50, sample_interval=1,
+     jump=0, batch_size=64, epochs_num=50,
+     bi=True, attention=True, attn_layer=4,
+     cell_num=128, dense_dim=64,
+     test_only=False, data_file=data_file, scenario=scenario)
