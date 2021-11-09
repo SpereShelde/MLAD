@@ -61,9 +61,8 @@ class DatasetReader:
         all_data_time_serials = np.vstack(all_data_time_serials)
         return all_data_time_serials, time_step_size_array
 
-    def _de_concatenate_data(self, time_serials, size_array, feature_weights, time_steps=100, sample_interval=5,
-                             target_sequence=False,
-                             ignore_all_zero=True, target_features_fusion=False, target_skip_steps=0):
+    def _de_concatenate_data(self, time_serials, size_array, time_steps=100, sample_interval=5,
+                             target_sequence=False, target_skip_steps=0):
         input_time_serials = []
         target_time_serials = []
 
@@ -73,23 +72,12 @@ class DatasetReader:
             accumulated_size += size
             for i in range(0, size - time_steps - target_skip_steps - 1, sample_interval):
                 a_sample = data_time_serials[i:i + time_steps]
-                if ignore_all_zero and not np.all(a_sample == 0):
-                    continue
                 input_time_serials.append(a_sample)
                 if target_sequence:
-                    if target_features_fusion:
-                        target_time_serials.append(
-                            np.dot(data_time_serials[i + target_skip_steps + 1: i + target_skip_steps + time_steps + 1],
-                                   feature_weights.T))
-                    else:
-                        target_time_serials.append(
-                            data_time_serials[i + target_skip_steps + 1: i + target_skip_steps + time_steps + 1])
+                    target_time_serials.append(
+                        data_time_serials[i + target_skip_steps + 1: i + target_skip_steps + time_steps + 1])
                 else:
-                    if target_features_fusion:
-                        target_time_serials.append(
-                            [[np.dot(data_time_serials[i + target_skip_steps + time_steps], feature_weights.T)]])
-                    else:
-                        target_time_serials.append([data_time_serials[i + target_skip_steps + time_steps]])
+                    target_time_serials.append([data_time_serials[i + target_skip_steps + time_steps]])
         input_time_serials = np.array(input_time_serials)
         target_time_serials = np.array(target_time_serials)
         # if random_order:
@@ -102,9 +90,26 @@ class DatasetReader:
             for feature_name in feature_names:
                 a = file[feature_name]
 
-    def sample(self, feature_names=None, time_steps=100, sample_interval=5, target_sequence=False,
-               ignore_all_zero=True, target_features_fusion=False, test_on_file=False, test_files=None,
-               target_skip_steps=0):
+    def collect(self, file_name, feature_names=None):
+        pass
+
+    def sample_from_np(self):
+        pass
+
+    def get_scalers(self, file_names=None, feature_names=None):
+        if not feature_names or len(feature_names) == 0:
+            feature_names = self.get_all_features()
+        data_time_serials, time_step_size_array = self._concatenate_data(file_names=file_names, feature_names=feature_names)
+        scalers = []
+        for i in range(len(feature_names)):
+            train_time_serial = data_time_serials[:, i].reshape([-1, 1])
+            scaler = MinMaxScaler()
+            scaler.fit(train_time_serial)
+            scalers.append(scaler)
+        return scalers
+
+    def sample(self, feature_names=None, time_steps=100, sample_interval=5, target_sequence=False, target_skip_steps=0,
+               split_test_from_train=False, test_files=None):
 
         if not feature_names or len(feature_names) == 0:
             feature_names = self.get_all_features()
@@ -135,7 +140,7 @@ class DatasetReader:
                                                                                    feature_names=feature_names)
         assert len(test_time_step_size_array) == 1
 
-        if not test_on_file:
+        if split_test_from_train:
             append_train_size = test_time_step_size_array[0]//2
             # print(append_train_size)
             # print(train_data_time_serials.shape)
@@ -162,29 +167,21 @@ class DatasetReader:
         normalized_train_data_time_serials = np.hstack(normalized_train_data_time_serials)
         normalized_test_data_time_serials = np.hstack(normalized_test_data_time_serials)
 
-        train_feature_vars = np.var(normalized_train_data_time_serials, axis=0)
-        train_feature_weights = train_feature_vars / (sum(train_feature_vars) + 1)
 
         train_input_time_serials, train_target_time_serials = self._de_concatenate_data(
             normalized_train_data_time_serials,
             train_time_step_size_array,
-            train_feature_weights,
             time_steps=time_steps,
             sample_interval=sample_interval,
             target_sequence=target_sequence,
-            ignore_all_zero=ignore_all_zero,
-            target_features_fusion=target_features_fusion,
             target_skip_steps=target_skip_steps)
 
         test_input_time_serials, test_target_time_serials = self._de_concatenate_data(
             normalized_test_data_time_serials,
             test_time_step_size_array,
-            train_feature_weights,
             time_steps=time_steps,
             sample_interval=1,
             target_sequence=target_sequence,
-            ignore_all_zero=False,
-            target_features_fusion=target_features_fusion,
             target_skip_steps=target_skip_steps)
 
         train_input_time_serials, train_target_time_serials = shuffle(train_input_time_serials, train_target_time_serials)

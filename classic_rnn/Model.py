@@ -15,9 +15,15 @@ from keras_multi_head import MultiHead
 
 # os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
 # os.environ["TF_CPP_VMODULE"]="gpu_process_state=10,gpu_cudamallocasync_allocator=10"
+from tools.anomaly_creator import insert_super_anomalies, print_all
+
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-
+train_files = [
+    "20181113_Driver1_Trip1.hdf", "20181113_Driver1_Trip2.hdf", "20181116_Driver1_Trip3.hdf",
+    "20181116_Driver1_Trip4.hdf", "20181116_Driver1_Trip5.hdf", "20181116_Driver1_Trip6.hdf",
+    "20181117_Driver1_Trip8.hdf", "20181203_Driver1_Trip9.hdf", "20181203_Driver1_Trip10.hdf"
+]
 
 def compare(item1, item2):
     r1 = abs(item1[0] - item1[1])
@@ -74,19 +80,12 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     if not test_only:
         test_file = "20181117_Driver1_Trip7.hdf"
 
-    data_reader = DatasetReader(
-        [
-            "20181113_Driver1_Trip1.hdf", "20181113_Driver1_Trip2.hdf", "20181116_Driver1_Trip3.hdf",
-            "20181116_Driver1_Trip4.hdf", "20181116_Driver1_Trip5.hdf", "20181116_Driver1_Trip6.hdf",
-            "20181203_Driver1_Trip10.hdf", "20181117_Driver1_Trip8.hdf", "20181203_Driver1_Trip9.hdf",
-            test_file,
-        ])
+    data_reader = DatasetReader(train_files+[test_file])
     inputs_train, targets_train, inputs_test, targets_test, features, _ = data_reader.sample(features,
                                                                                              time_steps=window_length,
                                                                                              sample_interval=sample_interval,
                                                                                              target_sequence=False,
-                                                                                             ignore_all_zero=False,
-                                                                                             test_on_file=True,
+                                                                                             split_test_from_train=False,
                                                                                              target_skip_steps=jump,
                                                                                              test_files=[test_file])
     print("train input shape", inputs_train.shape)
@@ -117,16 +116,18 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     model.compile(optimizer='adam', loss=loss_fn)
 
     model_name = f'{cell_num}cell-{"Bi" if bidirection else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_length}-jp{jump}-{dense_dim}/checkpoint'
-    model_path = os.path.join(ROOT_DIR, 'models', feature_set, model_name)
-    if os.path.exists(model_path):
+    model_weight_path = os.path.join(ROOT_DIR, 'models_weights', feature_set, model_name)
+    complete_model_path = os.path.join(ROOT_DIR, 'complete_models', feature_set, model_name)
+    if os.path.exists(model_weight_path):
         print("Load Model")
-        model.load_weights(model_path)
+        model.load_weights(model_weight_path)
 
     if not test_only:
         model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num,
                   shuffle=True)
         # model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
-        model.save_weights(model_path)
+        model.save_weights(model_weight_path)
+        model.save(complete_model_path)
 
     res = model.evaluate(inputs_test, targets_test)
     print(res)
@@ -191,8 +192,7 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
         time_steps=monitor_window_length,
         sample_interval=window_sample_interval,
         target_sequence=False,
-        ignore_all_zero=False,
-        test_on_file=True,
+        split_test_from_train=True,
         target_skip_steps=target_skip_steps,
         test_files=["20181117_Driver1_Trip7.hdf"])
     print("train input shape", inputs_train.shape)
@@ -258,6 +258,30 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
             # plt.show()
             break
 
+def sample_from_np(np_inputs, window_length=50):
+    input_time_serials = []
+    size = np_inputs.shape[0]
+    for i in range(size - window_length):
+        a_sample = np_inputs[i:i + window_length]
+        input_time_serials.append(a_sample)
+
+def detect_anomalies(train_files, test_file, feature_set, feature_names, model_name, thresholds):
+    complete_model_path = os.path.join(ROOT_DIR, 'complete_models', feature_set, model_name)
+    model = keras.models.load_model(complete_model_path, custom_objects={'loss_fn': loss_fn})
+    data_reader = DatasetReader(train_files)
+    scalers = data_reader.get_scalers()
+
+    time_serials, _ = data_reader._concatenate_data(file_names=[test_file], feature_names=feature_names)
+
+    anomaly_inputs, anomalies = insert_super_anomalies(time_serials, 50, 50)
+    while len(anomalies) == 0:
+        anomaly_inputs, anomalies = insert_super_anomalies(time_serials, 50, 50)
+    print(anomalies)
+    print_all(inputs=time_serials, anomaly_inputs=anomaly_inputs, anomalies=anomalies, feature_names=selected_features)
+
+    for i in range(len(scalers)):
+        anomaly_inputs
+#     todo:
 
 data_dir = os.path.join(ROOT_DIR, "..", "data")
 test_files = [f for f in listdir(data_dir) if isfile(os.path.join(data_dir, f)) and f[-3:] == "hdf" and f[15] != "1"]
@@ -270,48 +294,39 @@ speed_features = ['/CAN/AccPedal', '/CAN/EngineSpeed_CAN', '/CAN/VehicleSpeed', 
 corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_DMD', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_ex',
                       '/CAN/EngineSpeed_CAN', '/CAN/OilTemperature1', '/CAN/Trq_Indicated', '/CAN/VehicleSpeed',
                       '/CAN/WheelSpeed_FL', '/CAN/WheelSpeed_FR', '/CAN/WheelSpeed_RL', '/CAN/WheelSpeed_RR']
-train_files = [
-    "20181113_Driver1_Trip1.hdf", "20181113_Driver1_Trip2.hdf", "20181116_Driver1_Trip3.hdf",
-    "20181116_Driver1_Trip4.hdf", "20181116_Driver1_Trip5.hdf", "20181116_Driver1_Trip6.hdf",
-    "20181117_Driver1_Trip8.hdf", "20181203_Driver1_Trip9.hdf", "20181203_Driver1_Trip10.hdf"
-]
-
-# new_model = keras.models.load_model('saved_model/my_model', custom_objects={'loss_fn': loss_fn})
-# new_model.summary()
-# exit(0)
 
 # Train bare LSTM: LSTM with 128 cells dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-#      bidirection=False, attention=False, attn_layer=0,
-#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-#
-# # Train LSTM with one head attn: LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-#      bidirection=False, attention=True, attn_layer=1,
-#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-#
-# # Train bare bi-direction LSTM: bi-direction LSTM with 128 cells, dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-#      bidirection=True, attention=False, attn_layer=0,
-#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-#
-# # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-#      bidirection=True, attention=True, attn_layer=1,
-#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
+     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+     bidirection=False, attention=False, attn_layer=0,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+
+# Train LSTM with one head attn: LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
+     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+     bidirection=False, attention=True, attn_layer=1,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+
+# Train bare bi-direction LSTM: bi-direction LSTM with 128 cells, dense to 64 then feature_num
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
+     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+     bidirection=True, attention=False, attn_layer=0,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+
+# Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
+     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+     bidirection=True, attention=True, attn_layer=1,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 
 # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 2 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=10,
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
      bidirection=True, attention=True, attn_layer=2,
      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 
 # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=100,
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
      bidirection=True, attention=True, attn_layer=4,
      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
@@ -321,3 +336,4 @@ lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=100
 # for test_file in test_files:
 #     model_test(train_files=train_files, test_file=test_file, feature_names=selected_features, layer_num=16,
 #                dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
+
