@@ -1,16 +1,11 @@
 import math
-import random
-from os import listdir
-from os.path import isfile
 
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
-from classic_rnn.TemporalCrudeAttention import TemporalCrudeAttention
 import os
-from DatasetReader import DatasetReader
 from keras_multi_head import MultiHead
 import pandas as pd
 
@@ -144,7 +139,6 @@ def lstm(window_len=50, sample_interval=10,
     for i in range(0, test_inputs.shape[0], 100):
         outputs.append(model(test_inputs[i:i+100, :, :]))
     outputs = np.vstack(outputs)
-    x = np.arange(outputs.shape[0]).reshape(-1, 1)
 
     title = f'{scenario} {cell_num}cells {"Bi" if bi else "Uni"} LSTM {f"{attn_layer}lyrs Attn" if attention else ""} - {dense_dim} - {window_len}TS - Jump{jump} - Res-{res:.5f}'
 
@@ -168,10 +162,12 @@ def lstm(window_len=50, sample_interval=10,
 
     plt.figure(figsize=(30, 16))
     plt.suptitle(title, fontsize=30)
+    plot_length = min(400, ((test_inputs.shape[0] - window_len - jump) // 100) * 100)
+    x = np.arange(plot_length).reshape(-1, 1)
 
     for i in range(len(features)):
         plt.subplot(math.ceil(target_feature_size / 2), 2, i + 1)
-        plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
+        plt.plot(x, np.array(outputs[:plot_length, i]).reshape(-1, 1), label='predict', c='r', marker='.')
         plt.plot(x, np.array(test_targets[:plot_length, 0, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{features[i][1]}')
 
@@ -193,32 +189,32 @@ scenario = 'pid_kf'
 data_file = 'canvas_semi_auto_pid_kf.csv'
 
 lstm(window_len=50, sample_interval=1,
-     jump=0, batch_size=64, epochs_num=1,
+     jump=0, batch_size=64, epochs_num=50,
      bi=False, attention=False, attn_layer=0,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=True, data_file=data_file, scenario=scenario, plot_loss=True)
 lstm(window_len=50, sample_interval=1,
      jump=0, batch_size=64, epochs_num=50,
      bi=True, attention=False, attn_layer=0,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=False, data_file=data_file, scenario=scenario, plot_loss=True)
 lstm(window_len=50, sample_interval=1,
      jump=0, batch_size=64, epochs_num=50,
      bi=False, attention=True, attn_layer=1,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=False, data_file=data_file, scenario=scenario, plot_loss=True)
 lstm(window_len=50, sample_interval=1,
      jump=0, batch_size=64, epochs_num=50,
      bi=True, attention=True, attn_layer=1,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=False, data_file=data_file, scenario=scenario, plot_loss=True)
 lstm(window_len=50, sample_interval=1,
      jump=0, batch_size=64, epochs_num=50,
      bi=True, attention=True, attn_layer=2,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=False, data_file=data_file, scenario=scenario, plot_loss=True)
 lstm(window_len=50, sample_interval=1,
-     jump=0, batch_size=64, epochs_num=50,
+     jump=0, batch_size=64, epochs_num=80,
      bi=True, attention=True, attn_layer=4,
      cell_num=128, dense_dim=64,
-     test_only=False, data_file=data_file, scenario=scenario)
+     test_only=False, data_file=data_file, scenario=scenario, plot_loss=True)

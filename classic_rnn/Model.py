@@ -10,7 +10,7 @@ from tensorflow.keras import layers
 import matplotlib.pyplot as plt
 from classic_rnn.TemporalCrudeAttention import TemporalCrudeAttention
 import os
-from DatasetReader import DatasetReader
+from tools.DatasetReader import DatasetReader
 from keras_multi_head import MultiHead
 
 # os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
@@ -135,15 +135,13 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     for i in range(0, inputs_test.shape[0], 100):
         outputs.append(model(inputs_test[i:i+100, :, :]))
     outputs = np.vstack(outputs)
-    x = np.arange(outputs.shape[0]).reshape(-1, 1)
 
     title = f'{feature_size} {feature_set} {cell_num}cells {"Bi" if bidirection else "Uni"} LSTM {f"{attn_layer}lyrs Attn" if attention else ""} - {dense_dim} - {window_length}TS - Jump{jump} - Res-{res:.5f} - {test_file[15:-4]}'
 
     if plot_loss:
         plt.figure(figsize=(30, 16))
         plt.suptitle(f'loss - {title}', fontsize=30)
-        targets_test = targets_test.reshape([targets_test.shape[0], targets_test.shape[2]])
-        losses = np.abs(outputs - targets_test)
+        losses = np.abs(outputs - targets_test.reshape([targets_test.shape[0], targets_test.shape[2]]))
         for i in range(feature_size):
             plt.subplot(math.ceil(feature_size / 2), 2, i + 1)
             feature_loss = losses[:, i]
@@ -161,10 +159,11 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     plt.figure(figsize=(30, 16))
     plt.suptitle(title, fontsize=30)
     plot_length = min(1000, ((inputs_test.shape[0] - window_length - jump) // 100) * 100)
+    x = np.arange(plot_length).reshape(-1, 1)
 
     for i in range(feature_size):
         plt.subplot(math.ceil(feature_size / 2), 2, i + 1)
-        plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
+        plt.plot(x, np.array(outputs[:plot_length, i]).reshape(-1, 1), label='predict', c='r', marker='.')
         plt.plot(x, np.array(targets_test[:plot_length, 0, i]).reshape(-1, 1), label='target', c='b', marker='.')
         plt.title(f'{features[i]}')
 
@@ -226,10 +225,13 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
     res = model.evaluate(inputs_test, targets_test)
     print(res)
 
-    plot_length = min(4000, ((inputs_test.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
-    x = np.arange(plot_length).reshape(-1, 1)
-    inputs_test = inputs_test[:plot_length]
-    outputs = model(inputs_test)
+    plot_length = min(2000, ((inputs_test.shape[0] - monitor_window_length - target_skip_steps) // 100) * 100)
+
+    outputs = []
+    for i in range(0, inputs_test.shape[0], 100):
+        outputs.append(model(inputs_test[i:i+100, :, :]))
+    outputs = np.vstack(outputs)
+    x = np.arange(outputs.shape[0]).reshape(-1, 1)
 
     plt.figure(figsize=(30, 16))
     plt.suptitle(
@@ -239,9 +241,7 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
     for i in range(feature_size):
         plt.subplot(rows, math.ceil(feature_size / rows), i + 1)
         plt.plot(x, np.array(outputs[:, i]).reshape(-1, 1), label='predict', c='r', marker='.')
-        plt.plot(x, np.array(normalized_test_data_time_serials[
-                             monitor_window_length + target_skip_steps:monitor_window_length + target_skip_steps + plot_length,
-                             i]).reshape(-1, 1), label='target', c='b', marker='.')
+        plt.plot(x, targets_test[:plot_length, 0, i], label='target', c='b', marker='.')
         plt.title(f'{feature_names[i]}')
 
     # sorted_outputs = np.array(list(map(list, zip(*flat_results[:plot_length])))[0])
@@ -281,37 +281,37 @@ train_files = [
 # exit(0)
 
 # Train bare LSTM: LSTM with 128 cells dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-     bidirection=False, attention=False, attn_layer=0,
-     test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-
-# Train LSTM with one head attn: LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-     bidirection=False, attention=True, attn_layer=1,
-     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-
-# Train bare bi-direction LSTM: bi-direction LSTM with 128 cells, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-     bidirection=True, attention=False, attn_layer=0,
-     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-
-# Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
-     feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-     bidirection=True, attention=True, attn_layer=1,
-     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+#      bidirection=False, attention=False, attn_layer=0,
+#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+#
+# # Train LSTM with one head attn: LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
+# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+#      bidirection=False, attention=True, attn_layer=1,
+#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+#
+# # Train bare bi-direction LSTM: bi-direction LSTM with 128 cells, dense to 64 then feature_num
+# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+#      bidirection=True, attention=False, attn_layer=0,
+#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+#
+# # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
+# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
+#      bidirection=True, attention=True, attn_layer=1,
+#      test_only=True, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 
 # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 2 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=10,
      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
      bidirection=True, attention=True, attn_layer=2,
      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 
 # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=50,
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=100,
      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
      bidirection=True, attention=True, attn_layer=4,
      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
