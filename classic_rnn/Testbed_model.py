@@ -117,8 +117,8 @@ def lstm(window_len=50, sample_interval=10,
     model.build(input_shape=(batch_size, window_len, train_inputs.shape[2]))
     model.compile(optimizer='adam', loss=loss_fn)
 
-    model_name = f'{cell_num}cell-{"Bi" if bi else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_len}-jp{jump}-{dense_dim}/checkpoint'
-    model_weight_path = os.path.join(ROOT_DIR, "models_weights", "testbed_models", scenario, model_name)
+    model_name = f'{cell_num}cell-{"Bi" if bi else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_len}-jp{jump}-{dense_dim}'
+    model_weight_path = os.path.join(ROOT_DIR, "models_weights", "testbed_models", scenario, f'{model_name}/checkpoint')
     complete_model_path = os.path.join(ROOT_DIR, "complete_models", "testbed_models", scenario, model_name)
 
     if os.path.exists(model_weight_path):
