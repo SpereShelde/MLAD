@@ -142,24 +142,26 @@ def print_all(normal_serials, anomaly_serials, anomalies, feature_names, len_one
             row = math.floor(i / 2)
             col = i % 2
             # plt.plot(x[ploted:to_plot], inputs[ploted:to_plot, i], label='origin', c='b', marker='.')
-            ax[row, col].plot(x[ploted:to_plot], anomaly_serials[ploted:to_plot, i], label='attack', c='r', marker='.')
+            # ax[row, col].plot(x[ploted:to_plot], anomaly_serials[ploted:to_plot, i], label='attack', c='r', marker='.')
             ax[row, col].plot(x[ploted:to_plot], normal_serials[ploted:to_plot, i], label='origin', c='b', marker='.')
             ax[row, col].plot(x[ploted:to_plot], outputs[ploted:to_plot, i], label='predict', c='y', marker='.')
-            # for anomaly in anomalies:
-            #     if anomaly[2] != i:
-            #         continue
-            #     if anomaly[0]>=ploted and anomaly[0]+anomaly[1]<=to_plot:
-            #         ax[row, col].plot(x[anomaly[0]:anomaly[0]+anomaly[1]], anomaly_serials[anomaly[0]:anomaly[0] + anomaly[1], i], label=f'{anomaly[3]} attack', c='r', marker='.')
-            #         ax[row, col].legend(loc="upper right")
-            #     elif anomaly[0]>=ploted and anomaly[0]+anomaly[1]>to_plot:
-            #         pass
-            #         # ax[row, col].plot(x[anomaly[0]:to_plot], anomaly_serials[anomaly[0]:to_plot, i], label=f'{anomaly[3]} attack', c='r', marker='.')
-            #         # anomaly[1] -= (to_plot - anomaly[0])
-            #         # anomaly[0] = to_plot
-            #         # ax[row, col].legend(loc="upper left")
-            #     else:
-            #         pass
 
+            for anomaly in anomalies:
+                print(anomaly)
+                if anomaly[2] != i:
+                    continue
+                if anomaly[0]>=ploted and anomaly[0]+anomaly[1]<to_plot:
+                    ax[row, col].plot(x[anomaly[0]:anomaly[0]+anomaly[1]], anomaly_serials[anomaly[0]:anomaly[0] + anomaly[1], i], label=f'{anomaly[3]} attack', c='r', marker='.')
+                    # ax[row, col].legend(loc="upper right")
+                elif anomaly[0]>=ploted and anomaly[0]<to_plot and anomaly[0]+anomaly[1]>=to_plot:
+                    ax[row, col].plot(x[anomaly[0]:to_plot], anomaly_serials[anomaly[0]:to_plot, i], label=f'{anomaly[3]} attack', c='r', marker='.')
+                    anomaly[1] -= (to_plot - anomaly[0])
+                    anomaly[0] = to_plot
+                    # ax[row, col].legend(loc="upper left")
+                else:
+                    pass
+
+            # todo:
             # y_range = ax[i].get_ylim()
             # print(f'y_range: {y_range}')
             # interval = (y_range[1] - y_range[0]) / threshold_num

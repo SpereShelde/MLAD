@@ -460,14 +460,18 @@ sub_corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_e
 #      bidirection=True, attention=True, attn_layer=2,
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 #
-# Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
-lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=80,
-     feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
-     bidirection=True, attention=True, attn_layer=4,
-     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+# # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
+# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=80,
+#      feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
+#      bidirection=True, attention=True, attn_layer=4,
+#      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+#
+# detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
+#                  feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
+#                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
-detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
-                 feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
+detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='corelated_features',
+                 feature_names=corelated_features, window_length=50, jump=0, batch_size=64,
                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
 # for test_file in test_files:
