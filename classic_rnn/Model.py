@@ -84,6 +84,8 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
         test_file = "20181117_Driver1_Trip7.hdf"
 
     data_reader = DatasetReader(train_files + [test_file])
+
+    print(features)
     inputs_train, targets_train, inputs_test, targets_test, features, _ = data_reader.sample(features,
                                                                                              time_steps=window_length,
                                                                                              sample_interval=sample_interval,
@@ -425,7 +427,7 @@ corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_DMD', '/CAN/ENG_Trq_ZWR', '
                       '/CAN/WheelSpeed_FL', '/CAN/WheelSpeed_FR', '/CAN/WheelSpeed_RL', '/CAN/WheelSpeed_RR']
 
 sub_corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_ex',
-                      '/CAN/EngineSpeed_CAN' '/CAN/Trq_Indicated', '/CAN/VehicleSpeed',
+                      '/CAN/EngineSpeed_CAN', '/CAN/Trq_Indicated', '/CAN/VehicleSpeed',
                       '/CAN/WheelSpeed_FL', '/CAN/WheelSpeed_FR', '/CAN/WheelSpeed_RL', '/CAN/WheelSpeed_RR']
 
 # # Train bare LSTM: LSTM with 128 cells dense to 64 then feature_num
