@@ -7,13 +7,14 @@ from sklearn import linear_model
 import matplotlib.pyplot as plt
 from random import random, randint, choice
 
-a = np.array([
-    [1,2,3],
-    [1,2,3],
-    [1,2,3],
-])
+a = [
+    [1,2],
+    [1,2],
+    [1,2]
+]
+for b in a:
+    b[0] = 2
 
-a[:2, 2] += 1
 print(a)
 
 # import tensorflow as tf

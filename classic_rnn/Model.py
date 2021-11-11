@@ -4,6 +4,7 @@ from os import listdir
 from os.path import isfile
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -24,6 +25,7 @@ train_files = [
     "20181116_Driver1_Trip4.hdf", "20181116_Driver1_Trip5.hdf", "20181116_Driver1_Trip6.hdf",
     "20181117_Driver1_Trip8.hdf", "20181203_Driver1_Trip9.hdf", "20181203_Driver1_Trip10.hdf"
 ]
+
 
 def compare(item1, item2):
     r1 = abs(item1[0] - item1[1])
@@ -67,6 +69,7 @@ def prin_input(inputs_train, targets_train, sample_weights, feature_size, monito
     if show:
         plt.show()
 
+
 # def plot_lost(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=10,
 #          feature_set='corelated_features', features=None, cell_num=128, dense_dim=64,
 #          bidirection=False, attention=False, attn_layer=4,
@@ -80,7 +83,7 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     if not test_only:
         test_file = "20181117_Driver1_Trip7.hdf"
 
-    data_reader = DatasetReader(train_files+[test_file])
+    data_reader = DatasetReader(train_files + [test_file])
     inputs_train, targets_train, inputs_test, targets_test, features, _ = data_reader.sample(features,
                                                                                              time_steps=window_length,
                                                                                              sample_interval=sample_interval,
@@ -123,26 +126,33 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
         model.load_weights(model_weight_path)
 
     if not test_only:
-        model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num,
-                  shuffle=True)
+        if epochs_num > 0:
+            model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num,
+                      shuffle=True)
         # model.fit(inputs_train, targets_train, validation_split=0.2, batch_size=batch_size, epochs=epochs_num, shuffle=True, sample_weight=sample_weights)
         model.save_weights(model_weight_path)
-        model.save(complete_model_path)
+        # model.save(complete_model_path)
+        # # print(complete_model_path)
+        # new_model = keras.models.load_model(complete_model_path, custom_objects={'loss_fn': loss_fn})
+        # new_res = new_model.evaluate(inputs_test, targets_test)
+        # print(new_res)
 
     res = model.evaluate(inputs_test, targets_test)
     print(res)
 
     outputs = []
     for i in range(0, inputs_test.shape[0], 100):
-        outputs.append(model(inputs_test[i:i+100, :, :]))
+        outputs.append(model(inputs_test[i:i + 100, :, :]))
     outputs = np.vstack(outputs)
 
     title = f'{feature_size} {feature_set} {cell_num}cells {"Bi" if bidirection else "Uni"} LSTM {f"{attn_layer}lyrs Attn" if attention else ""} - {dense_dim} - {window_length}TS - Jump{jump} - Res-{res:.5f} - {test_file[15:-4]}'
 
     if plot_loss:
+        losses = np.abs(outputs - targets_test.reshape([targets_test.shape[0], targets_test.shape[2]]))
+        df = pd.DataFrame(data=losses, columns=features)
+        df.to_csv(os.path.join(ROOT_DIR, "results", feature_set, f'loss-{model_name}.csv'), index=False)
         plt.figure(figsize=(30, 16))
         plt.suptitle(f'loss - {title}', fontsize=30)
-        losses = np.abs(outputs - targets_test.reshape([targets_test.shape[0], targets_test.shape[2]]))
         for i in range(feature_size):
             plt.subplot(math.ceil(feature_size / 2), 2, i + 1)
             feature_loss = losses[:, i]
@@ -155,7 +165,6 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
                 plt.savefig(os.path.join(ROOT_DIR, "results", feature_set, file_name))
                 # plt.show()
                 break
-
 
     plt.figure(figsize=(30, 16))
     plt.suptitle(title, fontsize=30)
@@ -229,7 +238,7 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
 
     outputs = []
     for i in range(0, inputs_test.shape[0], 100):
-        outputs.append(model(inputs_test[i:i+100, :, :]))
+        outputs.append(model(inputs_test[i:i + 100, :, :]))
     outputs = np.vstack(outputs)
     x = np.arange(outputs.shape[0]).reshape(-1, 1)
 
@@ -258,6 +267,7 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
             # plt.show()
             break
 
+
 def sample_from_np(np_inputs, window_length=50):
     input_time_serials = []
     size = np_inputs.shape[0]
@@ -266,33 +276,140 @@ def sample_from_np(np_inputs, window_length=50):
         input_time_serials.append(a_sample)
     return np.array(input_time_serials)
 
-def detect_anomalies(train_files, test_file, feature_set, feature_names, model_name, thresholds):
-    complete_model_path = os.path.join(ROOT_DIR, 'complete_models', feature_set, model_name)
-    model = keras.models.load_model(complete_model_path, custom_objects={'loss_fn': loss_fn})
-    data_reader = DatasetReader(train_files+[test_file])
+
+def define_threshold(df):
+    df = pd.DataFrame(np.sort(df.values, axis=0), index=df.index, columns=df.columns)
+    size = df.shape[0]
+    percents = np.arange(5, 10) * math.floor(0.1 * size)
+    thresholds = df.iloc[percents]
+    return thresholds
+
+
+def compare_with_threshold(outputs, thresholds, window_len=50):
+    results = []
+    for threshold in thresholds:
+        # result = np.less_equal(outputs, threshold)
+        # zeros = np.zeros([ window_len, result.shape[1]], dtype=bool)
+        # result = np.vstack((zeros, result))  # [threshold_size, time_serial, feature_size]
+        results.append(np.less_equal(outputs, threshold))
+    results = np.array(results)
+    return results
+
+
+def results_to_span(results):
+    end = results.shape[1]
+    spans = []
+
+    for j in range(results.shape[2]):  # features
+        spans.append([])
+        for i in range(results.shape[0]):
+            start, stop = 0, 0
+            spans[j].append([])
+            while start < end:
+                while start < end and results[i, start, j]:
+                    start += 1
+                stop = start
+                while stop < end and not results[i, stop, j]:
+                    stop += 1
+                if stop > start:
+                    spans[j][i].append([start, stop])
+                start = stop
+
+    return spans
+
+
+def load_model_weights(window_length=50, jump=0, batch_size=64,
+                       feature_set='selected_features', features=None, cell_num=128, dense_dim=64,
+                       bidirection=False, attention=True, attn_layer=1):
+    feature_size = len(features)
+    model = keras.Sequential()
+    # model.add(layers.LSTM(cell_num, dropout=0.05, return_sequences=False))
+    a_layer = layers.LSTM(cell_num, dropout=0.05, return_sequences=False)
+    if bidirection:
+        a_layer = layers.Bidirectional(a_layer)
+    if attention:
+        a_layer = MultiHead(a_layer, layer_num=attn_layer)
+    model.add(a_layer)
+    if attention:
+        model.add(layers.Flatten())
+    model.add(layers.Dense(dense_dim))
+    model.add(layers.Dense(feature_size))
+    model.build(input_shape=(batch_size, window_length, feature_size))
+    model.compile(optimizer='adam', loss=loss_fn)
+
+    model_name = f'{cell_num}cell-{"Bi" if bidirection else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_length}-jp{jump}-{dense_dim}'
+    model_weight_path = os.path.join(ROOT_DIR, 'models_weights', feature_set, f'{model_name}/checkpoint')
+    if os.path.exists(model_weight_path):
+        print("Load Model")
+        model.load_weights(model_weight_path)
+    return model, model_name
+
+
+def detect_anomalies(train_files, test_file, feature_set, feature_names, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64,
+                     bidirection=True, attention=True, attn_layer=4):
+    data_reader = DatasetReader(train_files + [test_file])
     scalers = data_reader.get_scalers(file_names=train_files, feature_names=feature_names)
 
     time_serials, _ = data_reader._concatenate_data(file_names=[test_file], feature_names=feature_names)
 
-    anomaly_inputs, anomalies = insert_super_anomalies(time_serials, 50, 50)
+    anomaly_serials, anomalies = insert_super_anomalies(time_serials, 100, 50)
     while len(anomalies) == 0:
-        anomaly_inputs, anomalies = insert_super_anomalies(time_serials, 50, 50)
+        anomaly_serials, anomalies = insert_super_anomalies(time_serials, 100, 50)
+    print(f'anomaly_serials shape: {anomaly_serials.shape}')
+    print('anomalies:')
     print(anomalies)
-    # print_all(inputs=time_serials, anomaly_inputs=anomaly_inputs, anomalies=anomalies, feature_names=selected_features)
-    normalized_anomaly_inputs = []
 
-    print(anomaly_inputs.shape)
+    normalized_time_serials = []
     for i in range(len(scalers)):
         scaler = scalers[i]
-        normalized_anomaly_inputs.append(scaler.transform(anomaly_inputs[:, i].reshape([-1, 1])))
+        normalized_time_serials.append(scaler.transform(time_serials[:, i].reshape([-1, 1])))
+    normalized_time_serials = np.hstack(normalized_time_serials)
+    print(f'normalized_time_serials shape: {normalized_time_serials.shape}')
 
-    normalized_anomaly_inputs = np.hstack(normalized_anomaly_inputs)
-    input_samples = sample_from_np(normalized_anomaly_inputs)
-    print(input_samples.shape)
+    normalized_anomaly_serials = []
+    for i in range(len(scalers)):
+        scaler = scalers[i]
+        normalized_anomaly_serials.append(scaler.transform(anomaly_serials[:, i].reshape([-1, 1])))
+    normalized_anomaly_serials = np.hstack(normalized_anomaly_serials)
+    print(f'normalized_anomaly_serials shape: {normalized_anomaly_serials.shape}')
 
-    
+    anomaly_input_samples = sample_from_np(normalized_anomaly_serials)
+    input_samples = sample_from_np(normalized_time_serials)
+    print(f'inputs shape: {anomaly_input_samples.shape}')
 
-    # todo: set threshold
+    model, model_name = load_model_weights(window_length=window_length, jump=jump, batch_size=batch_size,
+                                           feature_set=feature_set, features=feature_names, cell_num=cell_num,
+                                           dense_dim=dense_dim,
+                                           bidirection=bidirection, attention=attention, attn_layer=attn_layer)
+
+    threshold_csv_path = os.path.join(ROOT_DIR, 'results', feature_set, f'loss-{model_name}.csv')
+    df = pd.read_csv(threshold_csv_path)
+    thresholds = define_threshold(df)
+    thresholds = thresholds.values
+
+    outputs = []
+    for i in range(0, anomaly_input_samples.shape[0], 100):
+        outputs.append(model(anomaly_input_samples[i:i + 100, :, :]))
+    outputs = np.vstack(outputs)
+    outputs = np.vstack((normalized_anomaly_serials[:50], outputs))
+    print(f'outputs shape: {outputs.shape}')
+
+    losses = np.abs(normalized_anomaly_serials - outputs)
+    print(f'losses shape: {outputs.shape}')
+
+    # print(losses[:50, 0])
+    # exit(0)
+
+    # todo: compare??
+    results = compare_with_threshold(losses, thresholds)
+    print(f'results shape: {results.shape}')
+    # print(np.all(results==False))
+    spans = results_to_span(results)  # shape: [feature_size, threshold_size, ...]
+
+    print_all(normal_serials=normalized_time_serials, anomaly_serials=normalized_anomaly_serials, anomalies=anomalies,
+              outputs=outputs, feature_names=feature_names, spans=spans,
+              path=os.path.join(ROOT_DIR, "results", feature_set, 'attack'))
 
 
 data_dir = os.path.join(ROOT_DIR, "..", "data")
@@ -307,14 +424,16 @@ corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_DMD', '/CAN/ENG_Trq_ZWR', '
                       '/CAN/EngineSpeed_CAN', '/CAN/OilTemperature1', '/CAN/Trq_Indicated', '/CAN/VehicleSpeed',
                       '/CAN/WheelSpeed_FL', '/CAN/WheelSpeed_FR', '/CAN/WheelSpeed_RL', '/CAN/WheelSpeed_RR']
 
-detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='selected_features', feature_names=selected_features, model_name='128cell-Bi-LSTM-4lyrs-Attn-wl50-jp0-64', thresholds=[])
+sub_corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_ex',
+                      '/CAN/EngineSpeed_CAN' '/CAN/Trq_Indicated', '/CAN/VehicleSpeed',
+                      '/CAN/WheelSpeed_FL', '/CAN/WheelSpeed_FR', '/CAN/WheelSpeed_RL', '/CAN/WheelSpeed_RR']
 
 # # Train bare LSTM: LSTM with 128 cells dense to 64 then feature_num
 # lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
 #      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
 #      bidirection=False, attention=False, attn_layer=0,
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-#
+
 # # Train LSTM with one head attn: LSTM with 128 cells, 1 layer attn, dense to 64 then feature_num
 # lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
 #      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
@@ -339,15 +458,18 @@ detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf"
 #      bidirection=True, attention=True, attn_layer=2,
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 #
-# # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=1,
-#      feature_set='selected_features', features=selected_features, cell_num=128, dense_dim=64,
-#      bidirection=True, attention=True, attn_layer=4,
-#      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+# Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
+lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=80,
+     feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
+     bidirection=True, attention=True, attn_layer=4,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+
+detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
+                 feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
+                 cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
 # for test_file in test_files:
 #     model_test(train_files=train_files, test_file=test_file, feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
 # for test_file in test_files:
 #     model_test(train_files=train_files, test_file=test_file, feature_names=selected_features, layer_num=16,
 #                dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
-
