@@ -141,50 +141,42 @@ def print_all(normal_serials, anomaly_serials, anomalies, feature_names, len_one
         for i in range(feature_size):
             row = math.floor(i / 2)
             col = i % 2
-            # plt.plot(x[ploted:to_plot], inputs[ploted:to_plot, i], label='origin', c='b', marker='.')
-            # ax[row, col].plot(x[ploted:to_plot], anomaly_serials[ploted:to_plot, i], label='attack', c='r', marker='.')
             ax[row, col].plot(x[ploted:to_plot], normal_serials[ploted:to_plot, i], label='origin', c='b', marker='.')
             ax[row, col].plot(x[ploted:to_plot], outputs[ploted:to_plot, i], label='predict', c='y', marker='.')
 
             for anomaly in anomalies:
-                print(anomaly)
                 if anomaly[2] != i:
                     continue
-                if anomaly[0]>=ploted and anomaly[0]+anomaly[1]<to_plot:
+                if anomaly[0]>=ploted and anomaly[0]+anomaly[1]<=to_plot:
                     ax[row, col].plot(x[anomaly[0]:anomaly[0]+anomaly[1]], anomaly_serials[anomaly[0]:anomaly[0] + anomaly[1], i], label=f'{anomaly[3]} attack', c='r', marker='.')
-                    # ax[row, col].legend(loc="upper right")
-                elif anomaly[0]>=ploted and anomaly[0]<to_plot and anomaly[0]+anomaly[1]>=to_plot:
+                elif anomaly[0]>=ploted and anomaly[0]<=to_plot and anomaly[0]+anomaly[1]>=to_plot:
                     ax[row, col].plot(x[anomaly[0]:to_plot], anomaly_serials[anomaly[0]:to_plot, i], label=f'{anomaly[3]} attack', c='r', marker='.')
                     anomaly[1] -= (to_plot - anomaly[0])
                     anomaly[0] = to_plot
-                    # ax[row, col].legend(loc="upper left")
                 else:
                     pass
+            ax[row, col].legend(loc="upper right")
 
-            # todo:
-            # y_range = ax[i].get_ylim()
-            # print(f'y_range: {y_range}')
-            # interval = (y_range[1] - y_range[0]) / threshold_num
-            # colors = ['r', 'orange', 'y', 'g', 'b', 'purple']
-            # for j in range(threshold_num):
-            #     for k in range(len(spans[i][j])):  # shape: [1, window_len, 1]
-            #         print(k, spans[i][j][k])
-            #         span = spans[i][j][k]
-            #         # print(span)
-            #         if span[0]>=ploted and span[1]<=to_plot:
-            #             # print(span[0], span[1])
-            #             ax[row, col].axvspan(span[0], span[1], facecolor=colors[j], alpha=0.5)
-            #         elif span[0]>=ploted and span[1]>to_plot:
-            #             # print(span[0], to_plot)
-            #             ax[row, col].axvspan(span[0], to_plot, facecolor=colors[j], alpha=0.5)
-            #             spans[0] = to_plot
-            #         elif span[0]>=ploted and span[1]>to_plot:
-            #             print("??")
-            #         else:
-            #             # print("??")
-            #             pass
+            # colors = ['#E30000', '#F50067', '#D119BE', '#5B66FD', '#0089FF', '#0098E8']
+            colors = ['r', 'orange', 'y', 'g', 'b', 'purple']
+            alphas = [0.6, 0.55, 0.5, 0.45, 0.4, 0.35]
+            for j in range(threshold_num):
+                try:
+                    for span in spans[i][j]:  # shape: [1, window_len, 1]
+                        # print(span)
+                        if span[0]>=ploted and span[1]<=to_plot:
+                            ax[row, col].axvspan(span[0], span[1], facecolor=colors[j], alpha=alphas[j])
+                        elif span[0]>=ploted and span[0]<=to_plot and span[1]>=to_plot:
+                            ax[row, col].axvspan(span[0], to_plot, facecolor=colors[j], alpha=alphas[j])
+                            span[0] = to_plot
+                        else:
+                            pass
+                except TypeError as e:
+                    print(i, j)
+                    print(spans[i])
 
             ax[row, col].set_title(f'{feature_names[i]}')
+            ax[row, col].set_ylim([0,1])
         # fig.tight_layout()
         plt.savefig(os.path.join(path, f'{ploted}-{to_plot}.png'))
         plt.close()

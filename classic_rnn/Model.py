@@ -282,8 +282,11 @@ def sample_from_np(np_inputs, window_length=50):
 def define_threshold(df):
     df = pd.DataFrame(np.sort(df.values, axis=0), index=df.index, columns=df.columns)
     size = df.shape[0]
-    percents = np.arange(5, 10) * math.floor(0.1 * size)
-    thresholds = df.iloc[percents]
+    percents = np.arange(9, 11) * math.floor(0.1 * size)
+    thresholds = df.iloc[percents].to_numpy()
+    end = thresholds[-1]
+    # thresholds = np.vstack((thresholds, np.array([end*1.1, end*1.2, end*1.3])))
+    thresholds = np.array([end*0.8, end*0.9, end, end*1.1, end*1.2])
     return thresholds
 
 
@@ -313,7 +316,7 @@ def results_to_span(results):
                 stop = start
                 while stop < end and not results[i, stop, j]:
                     stop += 1
-                if stop > start:
+                if stop >= start:
                     spans[j][i].append([start, stop])
                 start = stop
 
@@ -388,7 +391,6 @@ def detect_anomalies(train_files, test_file, feature_set, feature_names, window_
     threshold_csv_path = os.path.join(ROOT_DIR, 'results', feature_set, f'loss-{model_name}.csv')
     df = pd.read_csv(threshold_csv_path)
     thresholds = define_threshold(df)
-    thresholds = thresholds.values
 
     outputs = []
     for i in range(0, anomaly_input_samples.shape[0], 100):
@@ -408,6 +410,7 @@ def detect_anomalies(train_files, test_file, feature_set, feature_names, window_
     print(f'results shape: {results.shape}')
     # print(np.all(results==False))
     spans = results_to_span(results)  # shape: [feature_size, threshold_size, ...]
+    print(spans)
 
     print_all(normal_serials=normalized_time_serials, anomaly_serials=normalized_anomaly_serials, anomalies=anomalies,
               outputs=outputs, feature_names=feature_names, spans=spans,
@@ -461,18 +464,23 @@ sub_corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_e
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 #
 # # Train bi-direction LSTM with one head attn: bi-direction LSTM with 128 cells, 4 layer attn, dense to 64 then feature_num
-# lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num=80,
+# lstm(window_length=50, sample_interval=4, jump=0, batch_size=64, epochs_num=0,
 #      feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
 #      bidirection=True, attention=True, attn_layer=4,
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
-#
-# detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
-#                  feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
-#                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
-detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='corelated_features',
-                 feature_names=corelated_features, window_length=50, jump=0, batch_size=64,
+# lstm(window_length=50, sample_interval=4, jump=0, batch_size=64, epochs_num=60,
+#      feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
+#      bidirection=True, attention=True, attn_layer=8,
+#      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+#
+detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
+                 feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
+
+# detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='corelated_features',
+#                  feature_names=corelated_features, window_length=50, jump=0, batch_size=64,
+#                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
 # for test_file in test_files:
 #     model_test(train_files=train_files, test_file=test_file, feature_names=selected_features, layer_num=12, dense_1_num=256, dense_2_num=64, monitor_window_length=200, target_skip_steps=4)
