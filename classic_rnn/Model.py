@@ -16,7 +16,8 @@ from keras_multi_head import MultiHead
 
 # os.environ["TF_GPU_ALLOCATOR"]="cuda_malloc_async"
 # os.environ["TF_CPP_VMODULE"]="gpu_process_state=10,gpu_cudamallocasync_allocator=10"
-from tools.anomaly_creator import insert_super_anomalies, print_all
+from tools.anomaly_creator import insert_super_anomalies, print_all, sample_from_np, detect_results_to_spans, \
+    compare_with_threshold
 
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -270,15 +271,6 @@ def multi_time_serial_lstm_crude_attention(monitor_window_length, window_sample_
             break
 
 
-def sample_from_np(np_inputs, window_length=50):
-    input_time_serials = []
-    size = np_inputs.shape[0]
-    for i in range(size - window_length):
-        a_sample = np_inputs[i:i + window_length]
-        input_time_serials.append(a_sample)
-    return np.array(input_time_serials)
-
-
 def define_threshold(df):
     df = pd.DataFrame(np.sort(df.values, axis=0), index=df.index, columns=df.columns)
     size = df.shape[0]
@@ -288,39 +280,6 @@ def define_threshold(df):
     # thresholds = np.vstack((thresholds, np.array([end*1.1, end*1.2, end*1.3])))
     thresholds = np.array([end*0.8, end*0.9, end, end*1.1, end*1.2])
     return thresholds
-
-
-def compare_with_threshold(outputs, thresholds, window_len=50):
-    results = []
-    for threshold in thresholds:
-        # result = np.less_equal(outputs, threshold)
-        # zeros = np.zeros([ window_len, result.shape[1]], dtype=bool)
-        # result = np.vstack((zeros, result))  # [threshold_size, time_serial, feature_size]
-        results.append(np.less_equal(outputs, threshold))
-    results = np.array(results)
-    return results
-
-
-def results_to_span(results):
-    end = results.shape[1]
-    spans = []
-
-    for j in range(results.shape[2]):  # features
-        spans.append([])
-        for i in range(results.shape[0]):
-            start, stop = 0, 0
-            spans[j].append([])
-            while start < end:
-                while start < end and results[i, start, j]:
-                    start += 1
-                stop = start
-                while stop < end and not results[i, stop, j]:
-                    stop += 1
-                if stop >= start:
-                    spans[j][i].append([start, stop])
-                start = stop
-
-    return spans
 
 
 def load_model_weights(window_length=50, jump=0, batch_size=64,
@@ -409,7 +368,7 @@ def detect_anomalies(train_files, test_file, feature_set, feature_names, window_
     results = compare_with_threshold(losses, thresholds)
     print(f'results shape: {results.shape}')
     # print(np.all(results==False))
-    spans = results_to_span(results)  # shape: [feature_size, threshold_size, ...]
+    spans = detect_results_to_spans(results)  # shape: [feature_size, threshold_size, ...]
     print(spans)
 
     print_all(normal_serials=normalized_time_serials, anomaly_serials=normalized_anomaly_serials, anomalies=anomalies,

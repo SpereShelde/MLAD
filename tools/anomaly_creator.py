@@ -9,11 +9,6 @@ from tools.DatasetReader import DatasetReader
 
 
 def define_bias(partial_inputs):
-    # partial_inputs: only one feature
-    # shape: [3 * attack_duration, 1]
-    # given partial inputs before and after the attack duration
-    # computes variance and max value
-    # returns a random value between 0 and the smaller one between 1/2 of range and 1/10 of max value
     the_min = np.min(partial_inputs)
     the_max = np.max(partial_inputs)
     # the_range = the_max - the_min
@@ -28,52 +23,43 @@ def define_bias(partial_inputs):
         return -1 * (random() * (0.5 * the_min) + the_min)
 
 
-# def insert_anomalies(inputs, max_anom_duration, cooldown):
-#     #inputs shape: [timesteps, features]
-#     time_steps = inputs.shape[0]
-#     feature_size = inputs.shape[1]
-#     anomalies = []
-#     anomaly_inputs = np.copy(inputs)
-#     current_step = randint(max_anom_duration, time_steps - max_anom_duration)
-#
-#     while current_step < time_steps - max_anom_duration:
-#         duration = randint(40, max_anom_duration)
-#         current_feature = randint(0, feature_size)
-#         while current_feature < feature_size and current_feature >= 0:
-#             anomaly_type = choice(['bias', 'delay', 'replay'])
-#             if anomaly_type == 'bias':
-#                 bias = define_bias(inputs[max(0, current_step-duration):min(current_step+2*duration, time_steps - max_anom_duration), current_feature])
-#                 anomaly_inputs[current_step:current_step+duration, current_feature] += bias
-#                 anomalies.append((current_step, duration, current_feature, 'bias', bias))
-#             elif anomaly_type == 'delay':
-#                 range = np.max(inputs[current_step:current_step+duration, current_feature]) - np.min(inputs[current_step:current_step+duration, current_feature])
-#                 if range > 0:
-#                     delay = randint(math.floor(0.2 * duration), math.ceil(0.5 * duration))
-#                     anomaly_inputs[current_step:current_step+delay, current_feature] = inputs[current_step, current_feature]
-#                     anomaly_inputs[current_step+delay:current_step+duration, current_feature] = inputs[current_step:current_step+duration-delay, current_feature]
-#                     anomalies.append((current_step, duration, current_feature, 'delay', delay))
-#             elif anomaly_type == 'replay':
-#                 replay = randint(math.floor(0.1 * duration), math.ceil(0.4 * duration))
-#                 replay_inputs = inputs[current_step-replay:current_step, current_feature]
-#                 range = np.max(replay_inputs[current_step:current_step+duration, current_feature]) - np.min(replay_inputs[current_step:current_step+duration, current_feature])
-#                 if range > 0:
-#                     replay_step = current_step + replay
-#                     while replay_step < current_step + duration:
-#                         anomaly_inputs[replay_step-replay:replay_step, current_feature] = replay_inputs
-#                         replay_step += replay
-#                     anomaly_inputs[replay_step-replay:current_step + duration, current_feature] = replay_inputs[:current_step + duration - replay_step+replay]
-#                     anomalies.append((current_step, duration, current_feature, 'replay', replay))
-#             else:
-#                 print("?")
-#                 exit(0)
-#             current_feature += choice([-1, 1]) * randint(1, feature_size+1)
-#
-#         current_step += duration
-#         current_step += max(cooldown, randint(0, time_steps))
-#     return anomaly_inputs, anomalies
+def sample_from_np(np_inputs, window_length=50):
+    input_time_serials = []
+    size = np_inputs.shape[0]
+    for i in range(size - window_length):
+        a_sample = np_inputs[i:i + window_length]
+        input_time_serials.append(a_sample)
+    return np.array(input_time_serials)
+
+
+def detect_results_to_spans(results):
+    end = results.shape[1]
+    spans = []
+    for j in range(results.shape[2]):  # features
+        spans.append([])
+        for i in range(results.shape[0]):
+            start, stop = 0, 0
+            spans[j].append([])
+            while start < end:
+                while start < end and results[i, start, j]:
+                    start += 1
+                stop = start
+                while stop < end and not results[i, stop, j]:
+                    stop += 1
+                if stop >= start:
+                    spans[j][i].append([start, stop])
+                start = stop
+    return spans
+
+def compare_with_threshold(outputs, thresholds):
+    results = []
+    for threshold in thresholds:
+        results.append(np.less_equal(outputs, threshold))
+    results = np.array(results)
+    return results
 
 def insert_super_anomalies(serials, max_anom_duration, cooldown):
-    #inputs shape: [timesteps, features]
+    #serials shape: [timesteps, features]
     time_steps = serials.shape[0]
     feature_size = serials.shape[1]
     anomalies = []
