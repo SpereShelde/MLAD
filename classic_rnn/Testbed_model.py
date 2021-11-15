@@ -238,7 +238,7 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
     spans = detect_results_to_spans(results)  # shape: [feature_size, threshold_size, ...]
     print(spans)
 
-    path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, 'attack')
+    path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'attack-{model_name}')
     os.makedirs(path, exist_ok=True)
     print_all(normal_serials=normalized_attack_serials, anomaly_serials=normalized_attack_serials, anomalies=anomalies,
               outputs=outputs, feature_names=remain_features, spans=spans,
@@ -352,12 +352,40 @@ def lstm(window_len=50, sample_interval=10,
             # plt.show()
             break
 
-# scenario = 'pid_kf'
-# data_file = 'canvas_semi_auto_pid_kf.csv'
-# file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
-# detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
-#                      cell_num=128, dense_dim=64, epochs=-1,
-#                      bidirection=True, attention=True, attn_layer=4, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64, epochs=100,
+                     bidirection=True, attention=False, attn_layer=4, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
+
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64, epochs=100,
+                     bidirection=False, attention=False, attn_layer=4, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
+
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64, epochs=100,
+                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
+
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64, epochs=100,
+                     bidirection=True, attention=True, attn_layer=2, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
+
+scenario = 'pid_kf'
+data_file = 'canvas_semi_auto_pid_kf.csv'
+file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+                     cell_num=128, dense_dim=64, epochs=100,
+                     bidirection=True, attention=True, attn_layer=10, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
 
 # scenario = 'ardu'
 # data_file = 'U4.csv'
@@ -366,12 +394,12 @@ def lstm(window_len=50, sample_interval=10,
 #                      cell_num=128, dense_dim=64, epochs=-1,
 #                      bidirection=True, attention=True, attn_layer=4, scenario=scenario, split=(8,1,1), attack_ids=remain_feature_ids)
 
-scenario = 'simu'
-data_file = 'aircraft_pitch.csv'
-file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'simulator', data_file)
-detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
-                     cell_num=128, dense_dim=64, epochs=100,
-                     bidirection=True, attention=True, attn_layer=4, scenario=scenario, split=(7,2,1), attack_ids=remain_feature_ids)
+# scenario = 'simu'
+# data_file = 'aircraft_pitch.csv'
+# file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'simulator', data_file)
+# detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
+#                      cell_num=128, dense_dim=64, epochs=40,
+#                      bidirection=True, attention=True, attn_layer=4, scenario=scenario, split=(7,2,1), attack_ids=remain_feature_ids)
 
 # lstm(window_len=50, sample_interval=1,
 #      jump=0, batch_size=64, epochs_num=50,
