@@ -7,21 +7,57 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from tools.DatasetReader import DatasetReader
 
+avg_anomaly_happen_interval = 300
 
-def define_bias(partial_inputs):
+def define_bias(partial_inputs, global_max, global_min):
+    ratio_max = 0.5
+    ratio_min = 0.25
+    if global_max - global_min < 2:
+        ratio_max = 0.9
+        ratio_min = 0.6
     the_min = np.min(partial_inputs)
     the_max = np.max(partial_inputs)
-    # the_range = the_max - the_min
-    max_bias = 0.5 * the_max
-    min_bias = 0.5 * the_min
+    pos_bias = global_max - the_max
+    neg_bias = the_min - global_min
+    # direction = choice([-1, 1])
 
-    direction = choice([-1, 1])
-
-    if direction > 0:
-        return random() * (max_bias - min_bias) + min_bias
+    if pos_bias > neg_bias:
+        bias = random() * (pos_bias * ratio_max) + pos_bias * ratio_min
     else:
-        return -1 * (random() * (0.5 * the_min) + the_min)
+        bias = -1 * (random() * (neg_bias * ratio_max) + neg_bias * ratio_min)
 
+    # print(f'global_max:{global_max}, the_min:{the_min}, pos_bias:{pos_bias}, neg_bias:{neg_bias}, bias:{bias}')
+    return bias
+
+# def define_bias_nomalized(partial_inputs):
+#     the_max = partial_inputs.max()
+#     the_min = partial_inputs.min()
+#     if the_min < 0 and the_max > 1:
+#         return 0
+#     ratio_min = 0.4
+#     ratio_max = 0.8
+#     ratio_range = ratio_max - ratio_min
+#     if the_min <= 0.5 and the_max >= 0.5:
+#         if the_min < 0:
+#             direction = 1
+#         elif the_max > 1:
+#             direction = -1
+#         else:
+#             direction = choice([-1, 1])
+#         if direction == 1:
+#             max_bias = 1-the_max
+#         else:
+#             max_bias = the_min
+#         bias = direction * (random() * (ratio_range * max_bias) + ratio_min * max_bias)
+#     elif the_min >= 0.5 and the_max >= 0.5:
+#         max_bias = the_min
+#         bias = -1 * (random() * (ratio_range * max_bias) + ratio_min * max_bias)
+#     elif the_max <= 0.5 and the_max <= 0.5:
+#         max_bias = 1-the_max
+#         bias = random() * (ratio_range * max_bias) + ratio_min * max_bias
+#     print(partial_inputs)
+#     print(f'min:{the_min}, max:{the_max}, bias: {bias}')
+#     return bias
 
 def sample_from_np(np_inputs, window_length=50):
     input_time_serials = []
@@ -58,29 +94,36 @@ def compare_with_threshold(outputs, thresholds):
     results = np.array(results)
     return results
 
-def insert_super_anomalies(serials, max_anom_duration, cooldown):
+def insert_super_anomalies(serials, feature_ids=None, max_anom_duration=50, cooldown=50):
     #serials shape: [timesteps, features]
     time_steps = serials.shape[0]
     feature_size = serials.shape[1]
     anomalies = []
     anomaly_serials = np.copy(serials)
-
-    current_feature = randint(0, feature_size)
-    print(f'feature: {current_feature}')
-    while current_feature < feature_size and current_feature >= 0:
-        current_step = randint(max_anom_duration, math.floor(time_steps / 4))
+    feature_ids = list.copy(feature_ids)
+    current_feature = choice(feature_ids)
+    # feature_ids.remove(current_feature)
+    attack_feature_num = choice([1,2,3])
+    # print(serials.shape)
+    # exit(0)
+    for i in range(attack_feature_num):
+        print(current_feature)
+        current_step = randint(max_anom_duration, avg_anomaly_happen_interval)
         while current_step < time_steps - max_anom_duration:
-            anomaly_type = choice(['bias', 'delay', 'replay'])
+            # anomaly_type = choice(['bias', 'delay', 'replay'])
+            anomaly_type = choice(['bias'])
             if anomaly_type == 'bias':
                 duration = randint(1, max_anom_duration)
-                bias = define_bias(serials[max(0, current_step - duration):min(current_step + 2 * duration, time_steps - max_anom_duration), current_feature])
-                if bias > 0:
+                global_max = serials[:, current_feature].max()
+                global_min = serials[:, current_feature].min()
+                bias = define_bias(serials[max(0, current_step - duration):min(current_step + 2 * duration, time_steps - max_anom_duration), current_feature], global_max, global_min)
+                if bias != 0:
                     anomaly_serials[current_step:current_step+duration, current_feature] = serials[current_step:current_step + duration, current_feature] + bias
                     anomalies.append([current_step, duration, current_feature, 'bias', bias])
             elif anomaly_type == 'delay':
                 duration = randint(10, max_anom_duration)
-                range = np.max(serials[current_step:current_step + duration, current_feature]) - np.min(serials[current_step:current_step + duration, current_feature])
-                if range > 0:
+                the_range = np.max(serials[current_step:current_step + duration, current_feature]) - np.min(serials[current_step:current_step + duration, current_feature])
+                if the_range > 0:
                     delay = randint(math.floor(0.2 * duration), math.ceil(0.5 * duration))
                     anomaly_serials[current_step:current_step+delay, current_feature] = serials[current_step, current_feature]
                     anomaly_serials[current_step+delay:current_step+duration, current_feature] = serials[current_step:current_step + duration - delay, current_feature]
@@ -89,8 +132,8 @@ def insert_super_anomalies(serials, max_anom_duration, cooldown):
                 duration = randint(10, max_anom_duration)
                 replay = randint(math.floor(0.1 * duration), math.ceil(0.4 * duration))
                 replay_inputs = serials[current_step - replay:current_step, current_feature]
-                range = np.max(replay_inputs) - np.min(replay_inputs)
-                if range > 0:
+                the_range = np.max(replay_inputs) - np.min(replay_inputs)
+                if the_range > 0:
                     replay_step = current_step + replay
                     while replay_step < current_step + duration:
                         anomaly_serials[replay_step-replay:replay_step, current_feature] = replay_inputs
@@ -102,9 +145,9 @@ def insert_super_anomalies(serials, max_anom_duration, cooldown):
                 exit(0)
 
             current_step += duration
-            current_step += max(cooldown, randint(0, math.floor(time_steps / 4)))
-        current_feature += choice([-1, 1]) * randint(1, feature_size+1)
-        print(f'feature: {current_feature}')
+            current_step += max(cooldown, randint(0, avg_anomaly_happen_interval))
+        feature_ids.remove(current_feature)
+        current_feature = choice(feature_ids)
 
     return anomaly_serials, anomalies
 
@@ -128,15 +171,15 @@ def print_all(normal_serials, anomaly_serials, anomalies, feature_names, len_one
             row = math.floor(i / 2)
             col = i % 2
             ax[row, col].plot(x[ploted:to_plot], normal_serials[ploted:to_plot, i], label='origin', c='b', marker='.')
-            ax[row, col].plot(x[ploted:to_plot], outputs[ploted:to_plot, i], label='predict', c='y', marker='.')
+            ax[row, col].plot(x[ploted:to_plot], outputs[ploted:to_plot, i], label='predict', c='g', marker='.')
 
             for anomaly in anomalies:
                 if anomaly[2] != i:
                     continue
                 if anomaly[0]>=ploted and anomaly[0]+anomaly[1]<=to_plot:
-                    ax[row, col].plot(x[anomaly[0]:anomaly[0]+anomaly[1]], anomaly_serials[anomaly[0]:anomaly[0] + anomaly[1], i], label=f'{anomaly[3]} attack', c='r', marker='.')
+                    ax[row, col].plot(x[anomaly[0]:anomaly[0]+anomaly[1]], anomaly_serials[anomaly[0]:anomaly[0] + anomaly[1], i], label=f'{anomaly[3]} atk:{anomaly[4]:.2f}', c='r', marker='.')
                 elif anomaly[0]>=ploted and anomaly[0]<=to_plot and anomaly[0]+anomaly[1]>=to_plot:
-                    ax[row, col].plot(x[anomaly[0]:to_plot], anomaly_serials[anomaly[0]:to_plot, i], label=f'{anomaly[3]} attack', c='r', marker='.')
+                    ax[row, col].plot(x[anomaly[0]:to_plot], anomaly_serials[anomaly[0]:to_plot, i], label=f'{anomaly[3]} atk:{anomaly[4]:.2f}', c='r', marker='.')
                     anomaly[1] -= (to_plot - anomaly[0])
                     anomaly[0] = to_plot
                 else:
@@ -144,16 +187,16 @@ def print_all(normal_serials, anomaly_serials, anomalies, feature_names, len_one
             ax[row, col].legend(loc="upper right")
 
             # colors = ['#E30000', '#F50067', '#D119BE', '#5B66FD', '#0089FF', '#0098E8']
-            colors = ['r', 'orange', 'y', 'g', 'b', 'purple']
-            alphas = [0.6, 0.55, 0.5, 0.45, 0.4, 0.35]
-            for j in range(threshold_num):
+            # colors = ['r', 'orange', 'y', 'g', 'b', 'purple']
+            # alphas = [0.6, 0.55, 0.5, 0.45, 0.4, 0.35]
+            for j in range(threshold_num-1,0,-1):
                 try:
                     for span in spans[i][j]:  # shape: [1, window_len, 1]
                         # print(span)
                         if span[0]>=ploted and span[1]<=to_plot:
-                            ax[row, col].axvspan(span[0], span[1], facecolor=colors[j], alpha=alphas[j])
+                            ax[row, col].axvspan(span[0], span[1], facecolor='y', alpha=0.2)
                         elif span[0]>=ploted and span[0]<=to_plot and span[1]>=to_plot:
-                            ax[row, col].axvspan(span[0], to_plot, facecolor=colors[j], alpha=alphas[j])
+                            ax[row, col].axvspan(span[0], to_plot, facecolor='y', alpha=0.2)
                             span[0] = to_plot
                         else:
                             pass
@@ -162,7 +205,7 @@ def print_all(normal_serials, anomaly_serials, anomalies, feature_names, len_one
                     print(spans[i])
 
             ax[row, col].set_title(f'{feature_names[i]}')
-            ax[row, col].set_ylim([0,1])
+            ax[row, col].set_ylim([-1,2])
         # fig.tight_layout()
         plt.savefig(os.path.join(path, f'{ploted}-{to_plot}.png'))
         plt.close()

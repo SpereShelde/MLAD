@@ -98,7 +98,7 @@ def lstm(window_length=50, sample_interval=10, jump=0, batch_size=64, epochs_num
     print("train target shape", targets_train.shape)
     print("test input shape", inputs_test.shape)
     print("test target shape", targets_test.shape)
-
+    exit(0)
     feature_size = inputs_test.shape[2]
 
     # inputs_train_diff_min = np.min(np.max(inputs_train, axis=1) - np.min(inputs_train, axis=1), axis=1)
@@ -364,7 +364,6 @@ def detect_anomalies(train_files, test_file, feature_set, feature_names, window_
     # print(losses[:50, 0])
     # exit(0)
 
-    # todo: compare??
     results = compare_with_threshold(losses, thresholds)
     print(f'results shape: {results.shape}')
     # print(np.all(results==False))
@@ -428,14 +427,14 @@ sub_corelated_features = ['/CAN/AccPedal', '/CAN/ENG_Trq_ZWR', '/CAN/ENG_Trq_m_e
 #      bidirection=True, attention=True, attn_layer=4,
 #      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 
-# lstm(window_length=50, sample_interval=4, jump=0, batch_size=64, epochs_num=60,
-#      feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
-#      bidirection=True, attention=True, attn_layer=8,
-#      test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
+lstm(window_length=50, sample_interval=4, jump=0, batch_size=64, epochs_num=60,
+     feature_set='sub_corelated_features', features=sub_corelated_features, cell_num=128, dense_dim=64,
+     bidirection=True, attention=True, attn_layer=8,
+     test_only=False, test_file="20181117_Driver1_Trip7.hdf", plot_loss=True)
 #
-detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
-                 feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
-                 cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
+# detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='sub_corelated_features',
+#                  feature_names=sub_corelated_features, window_length=50, jump=0, batch_size=64,
+#                  cell_num=128, dense_dim=64, bidirection=True, attention=True, attn_layer=4)
 
 # detect_anomalies(train_files=train_files, test_file="20181117_Driver1_Trip7.hdf", feature_set='corelated_features',
 #                  feature_names=corelated_features, window_length=50, jump=0, batch_size=64,

@@ -8,14 +8,12 @@ import matplotlib.pyplot as plt
 from random import random, randint, choice
 
 a = [
-    [1,2],
-    [1,2],
-    [1,2]
+    [1,2,3],
+    [1,2,3],
+    [1,2,3]
 ]
-for b in a:
-    b[0] = 2
-
-print(a)
+a = np.array(a)
+print(a.max())
 
 # import tensorflow as tf
 # from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
