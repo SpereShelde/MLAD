@@ -4,7 +4,7 @@ import pandas as pd
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-df = pd.read_csv(os.path.join(ROOT_DIR, '../data', 'testbed', 'room_train.csv'))
+df = pd.read_csv(os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', 'canvas_semi_auto_bare.csv'))
 # df = df.drop(['idx'], axis=1)
 
 #
@@ -16,21 +16,21 @@ df = pd.read_csv(os.path.join(ROOT_DIR, '../data', 'testbed', 'room_train.csv'))
 # exit(0)
 
 plt.figure(figsize=(30, 16))
-x_range = [800, 900]
+x_range = [800, 850]
 x_len = x_range[1] - x_range[0]
 # x = range(x_len)
 x = range(df.shape[0])
 
 from tools.simple_kf import SimpleKF
 
-# kf_vel_x = SimpleKF(0.04, 0.04, 0.6)
-# vel_x = df['Linear_X']
-# vel_x_kf = []
-# for vx in vel_x:
-#     vel_x_kf.append(kf_vel_x.update_estimate(vx))
+kf_vel_x = SimpleKF(0.04, 0.04, 0.5)
+vel_x = df['Linear_X']
+vel_x_kf = []
+for vx in vel_x:
+    vel_x_kf.append(kf_vel_x.update_estimate(vx))
 plt.subplot(4, 2, 1)
-# plt.plot(x, vel_x, c='b', marker='.')
-# df['Linear_X'] = vel_x_kf
+plt.plot(x, vel_x, c='b', marker='.')
+df['Linear_X'] = vel_x_kf
 plt.plot(x, df['Linear_X'], c='r', marker='.')
 plt.xlim(x_range)
 
@@ -111,6 +111,6 @@ df['Angular_Z'] = ang_z_kf
 plt.plot(x, df['Angular_Z'], c='r', marker='.')
 plt.xlim(x_range)
 
-# plt.show()
+plt.show()
 
-df.to_csv('room_train_kf.csv')
+# df.to_csv('room_train_kf.csv')

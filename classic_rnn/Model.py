@@ -40,8 +40,8 @@ def compare(item1, item2):
 
 
 def loss_fn(y_true, y_pred):
-    return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
-
+    # return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
+    return tf.reduce_mean(tf.square(tf.subtract(tf.math.log(tf.reshape(y_true, [-1, y_true.shape[2]])), tf.math.log(y_pred))), axis=1)
 
 def prin_input(inputs_train, targets_train, sample_weights, feature_size, monitor_window_length, target_skip_steps,
                rows=8, save=False, show=True):
