@@ -217,12 +217,24 @@ attack_durations = np.random.poisson(50, len(attack_intervals))
 attack_ends = attack_starts + attack_durations
 
 attack_ends = attack_ends[attack_ends < steps]
+attack_durations = attack_durations[:len(attack_ends)]
 attack_starts = attack_starts[:len(attack_ends)]
 attacK_types = np.random.choice([0, 1, 2], len(attack_ends))
 attack_values = []
-for att in attacK_types:
-    if att == 0:
 
+bias_up = 0.6
+bias_lo = 0.3
+for i, att in enumerate(attacK_types):
+    if att == 0:
+        bias = random.random() * (bias_up - bias_lo) + bias_lo
+        direction = random.choice([-1,1])
+        attack_values.append(direction*bias)
+    elif att == 1:
+        duration = attack_durations[i]
+        delay = random.randint(20, duration)
+        attack_values.append(delay)
+    else:
+        loop = random.randint(20, 60)
 
 # graph
 exp.sep_graph = True
