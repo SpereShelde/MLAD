@@ -1,2 +1,7 @@
-data/canbus/*
-.idea/*
+/data/
+/paper_fig/
+/classic_rnn/complete_models/
+/classic_rnn/models_weights/
+/classic_rnn/results/
+/classic_rnn/logs/
+.idea/

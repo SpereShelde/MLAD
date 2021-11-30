@@ -1,20 +1,26 @@
 import math
+import os
 
+# from classic_rnn.Model import plot_detect_res
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
-import os
+
 from keras_multi_head import MultiHead
 import pandas as pd
+
+tf.get_logger().setLevel('ERROR')
 
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 from sklearn.preprocessing import MinMaxScaler
 
 from tools.anomaly_creator import insert_super_anomalies, print_all, sample_from_np, detect_results_to_spans, \
-    compare_with_threshold
+    compare_with_threshold, span_analyze
 
 # omit_features = ['Throttle_Control', 'Servo_Control', 'Voltage', 'Throttle_A', 'Throttle_B', 'Servo', 'Linear_Y', 'Reference']
 # remain_features = ['Linear_X', 'Linear_Z', 'Acceleration_X', 'Acceleration_Y', 'Acceleration_Z', 'Angular_X', 'Angular_Y', 'Angular_Z']
@@ -93,7 +99,7 @@ def partition_df(df, split):
         test_df = df.iloc[part_one:,:]
         return train_df, test_df
 
-def read_serials_from_csv(file_path, split, attack_ids=None):
+def read_serials_from_csv(file_path, split, attack_ids=None, window_size=50):
     df, feature_names = read_csv(file_path)
     if split[2] != 0:
         train_df, test_df, attack_df = partition_df(df, split)
@@ -103,12 +109,10 @@ def read_serials_from_csv(file_path, split, attack_ids=None):
     train_scalers = get_scalers_df(train_df)
     normalized_train_serials = scale_time_serials_df(train_df, train_scalers)
     normalized_test_serials = scale_time_serials_df(test_df, train_scalers)
-    # print(f'remain_feature_ids: {remain_feature_ids}')
 
     if split[2] != 0:
-        # print(f'train_df: {train_df.shape}, test_df: {test_df.shape}, attack_df: {attack_df.shape}')
-        # attack_ids = [id_project[id] for id in attack_ids]
-        anomaly_serials, anomalies = insert_super_anomalies(attack_df.to_numpy(), attack_ids, 50, 50)
+        anomaly_serials, anomalies = insert_super_anomalies(attack_df.to_numpy(), feature_ids=attack_ids, max_anom_duration=50, cooldown=50, window_len=window_size, avg_anomaly_interval=100)
+        # anomaly_serials, anomalies = insert_super_anomalies(attack_df.to_numpy(), attack_ids, 50, 50, 200)
         # anomaly_serials, anomalies = insert_super_anomalies(attack_df.to_numpy(), remain_feature_ids, 50, 50)
         attack_df = pd.DataFrame(anomaly_serials, columns=feature_names)
         normalized_attack_serials = scale_time_serials_df(attack_df, train_scalers)
@@ -120,8 +124,7 @@ def read_serials_from_csv(file_path, split, attack_ids=None):
 
 def sample_from_csv(file_path, window_size=50, interval=10, jump=0, split=(8,2,0), attack_ids=None):
     if split[2] != 0:
-        normalized_train_serials, normalized_test_serials, normalized_attack_serials, anomalies, feature_names, remain_feature_ids = read_serials_from_csv(file_path, split, attack_ids)
-        # print(f'normalized_train_serials: {normalized_train_serials.shape}, normalized_attack_serials: {normalized_test_serials.shape}, normalized_attack_serials: {normalized_attack_serials.shape}')
+        normalized_train_serials, normalized_test_serials, normalized_attack_serials, anomalies, feature_names, remain_feature_ids = read_serials_from_csv(file_path, split, attack_ids, window_size)
 
         train_inputs, train_targets = serials_to_samples(normalized_train_serials,
                                                          remain_feature_ids=remain_feature_ids,
@@ -142,7 +145,9 @@ def sample_from_csv(file_path, window_size=50, interval=10, jump=0, split=(8,2,0
 
 
 def loss_fn(y_true, y_pred):
-    return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
+    # return tf.reduce_mean(tf.abs(tf.subtract(tf.reshape(y_true, [-1, y_true.shape[2]]), y_pred)), axis=1)
+    return tf.keras.metrics.mean_squared_logarithmic_error(y_true, y_pred)
+    # return tf.keras.metrics.mean_squared_logarithmic_error(y_true, y_pred)
 
 def define_threshold(df):
     df = pd.DataFrame(np.sort(df.values, axis=0), index=df.index, columns=df.columns)
@@ -171,7 +176,8 @@ def load_model_weights(window_length=50, jump=0, batch_size=64,
     model.add(layers.Dense(dense_dim))
     model.add(layers.Dense(target_feature_num))
     model.build(input_shape=(batch_size, window_length, input_feature_num))
-    model.compile(optimizer='adam', loss=loss_fn)
+    model.compile(optimizer='adam', loss='mse')
+    # model.compile(optimizer='adam', loss=loss_fn)
 
     model_name = f'{cell_num}cell-{"Bi" if bidirection else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_length}-jp{jump}-{dense_dim}'
     model_weight_path = os.path.join(ROOT_DIR, 'models_weights', 'testbed_models', scenario, f'{model_name}/checkpoint')
@@ -198,40 +204,78 @@ def print_loss(title, losses, features, path):
 
 def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
                      cell_num=128, dense_dim=64, epochs=50,
-                     bidirection=True, attention=True, attn_layer=4, scenario='pid_kf', split=(6,2,2), attack_ids=None):
+                     bidirection=True, attention=True, attn_layer=4, scenario='pid_kf', split=(6,2,2), attack_ids=None, avg_wl=3, detect=True):
+
+    # serials_df = pd.read_csv(os.path.join(ROOT_DIR, "results", 'sub_corelated_features', '20181203_Driver1_Trip10_Anomalous_Serials.csv'))
+    # anomaly_serials = serials_df.to_numpy(dtype=float)
+    # anomalies_df = pd.read_csv(os.path.join(ROOT_DIR, "results", 'sub_corelated_features', '20181203_Driver1_Trip10_Anomalies.csv'))
+    # anomalies = anomalies_df.values.tolist()
+
     train_inputs, train_targets, test_inputs, test_targets, attack_inputs, normalized_attack_serials, anomalies, feature_names = \
         sample_from_csv(file_path, window_size=window_length, interval=1, jump=jump, split=split, attack_ids=attack_ids)
+    train_targets = np.reshape(train_targets, [-1, train_targets.shape[2]])
+    test_targets = np.reshape(test_targets, [-1, test_targets.shape[2]])
 
-    print(split)
-    print(f'train_inputs shape: {train_inputs.shape}')
-    print(f'train_targets shape: {train_targets.shape}')
-    print(f'test_inputs shape: {test_inputs.shape}')
-    print(f'test_targets shape: {test_targets.shape}')
-    print(f'attack_inputs shape: {attack_inputs.shape}')
+    print(
+        f'train_inputs:{train_inputs.shape},train_targets:{train_targets.shape},test_inputs:{test_inputs.shape},test_targets:{test_targets.shape}')
     print(f'normalized_attack_serials shape: {normalized_attack_serials.shape}')
     print(f'anomalies:')
     print(anomalies)
 
-    model, model_name, model_weight_path = load_model_weights(window_length=window_length, jump=jump, batch_size=batch_size,
-                                           scenario=scenario, input_feature_num=len(feature_names), target_feature_num=len(remain_features), cell_num=cell_num,
-                                           dense_dim=dense_dim,
-                                           bidirection=bidirection, attention=attention, attn_layer=attn_layer)
+    model, model_name, model_weight_path = load_model_weights(window_length=window_length, jump=jump,
+                                                              batch_size=batch_size,
+                                                              scenario=scenario, input_feature_num=len(feature_names),
+                                                              target_feature_num=len(remain_features),
+                                                              cell_num=cell_num,
+                                                              dense_dim=dense_dim,
+                                                              bidirection=bidirection, attention=attention,
+                                                              attn_layer=attn_layer)
+    print(f'model_name: {model_name}')
+    if not detect:
+        if epochs > 0:
+            evaluation_res = []
+            train_res = []
+            validate_res = []
+            for i in range(epochs):
+                h = model.fit(train_inputs, train_targets, validation_split=0.1, batch_size=batch_size, epochs=1,
+                              shuffle=True, verbose=0)
+                eval_loss = model.evaluate(test_inputs, test_targets, verbose=0)
+                train_loss = h.history['loss'][-1]
+                vali_loss = h.history['val_loss'][-1]
+                evaluation_res.append(eval_loss)
+                train_res.append(train_loss)
+                validate_res.append(vali_loss)
+                print(f"{i} - train_loss:{train_loss},val_loss:{vali_loss},eval_loss:{eval_loss}")
+            model.save_weights(model_weight_path)
 
-    if epochs > 0:
-        model.fit(train_inputs, train_targets, validation_split=0.1, batch_size=batch_size, epochs=epochs, shuffle=True)
-        model.save_weights(model_weight_path)
+            history_csv_path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'history-{model_name}.csv')
+            train_res = np.array(train_res).reshape([-1, 1])
+            validate_res = np.array(validate_res).reshape([-1, 1])
+            evaluation_res = np.array(evaluation_res).reshape([-1, 1])
+            records = pd.DataFrame(np.hstack([train_res, validate_res, evaluation_res]),
+                                   columns=['train_loss', 'val_loss', 'eval_loss'])
 
-    if epochs >= 0:
-        outputs = []
-        for i in range(0, test_inputs.shape[0], 100):
-            outputs.append(model(test_inputs[i:i + 100, :, :]))
-        outputs = np.vstack(outputs)
-        losses = np.abs(outputs - test_targets.reshape([test_targets.shape[0], test_targets.shape[2]]))
-        df = pd.DataFrame(data=losses, columns=remain_features)
-        df.to_csv(os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'loss-{model_name}.csv'), index=False)
+            if os.path.exists(history_csv_path):
+                history = pd.read_csv(history_csv_path)
+                records = pd.concat([history, records], ignore_index=True)
+            print(f'loss records of {model_name}')
+            records.to_csv(history_csv_path, index=False)
 
-        res = model.evaluate(test_inputs, test_targets)
-        print(res)
+        if epochs >= 0:
+            outputs = []
+            for i in range(0, test_inputs.shape[0], 100):
+                outputs.append(model(test_inputs[i:i + 100, :, :]))
+            outputs = np.vstack(outputs)
+            train_losses = np.abs(outputs - test_targets)
+            df = pd.DataFrame(data=train_losses, columns=remain_features)
+            df.to_csv(os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'loss-{model_name}.csv'), index=False)
+
+            res = model.evaluate(test_inputs, test_targets)
+            print(res)
+
+            print_loss(model_name, train_losses, remain_features, os.path.join(ROOT_DIR, "results", 'testbed', scenario))
+
+        # return
 
     threshold_csv_path = os.path.join(ROOT_DIR, 'results', 'testbed', scenario, f'loss-{model_name}.csv')
     df = pd.read_csv(threshold_csv_path)
@@ -241,18 +285,37 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
     for i in range(0, attack_inputs.shape[0], 100):
         outputs.append(model(attack_inputs[i:i + 100, :, :]))
     outputs = np.vstack(outputs)
-    outputs = np.vstack((normalized_attack_serials[:window_length+1], outputs))
+    outputs = np.vstack((normalized_attack_serials[:window_length+jump+1], outputs))
     print(f'outputs shape: {outputs.shape}')
 
-    print_loss(model_name, losses, remain_features, os.path.join(ROOT_DIR, "results", 'testbed', scenario))
     losses = np.abs(normalized_attack_serials - outputs)
     print(f'losses shape: {outputs.shape}')
 
-    results = compare_with_threshold(losses, thresholds)
+    losses_copy = np.copy(losses)
+    # print(f'losses_copy shape: {losses_copy.shape}')
+    avg_losses = []
+    for i in range(losses_copy.shape[1]):
+        a_loss = losses_copy[:, i].reshape(-1)
+        # print(a_loss.shape)
+        a_avg_loss = np.convolve(a_loss, np.ones(avg_wl) / avg_wl, mode='valid')
+        # print(a_avg_loss.shape)
+        avg_losses.append(a_avg_loss.reshape([-1, 1]))
+
+    avg_losses = np.hstack(avg_losses)
+    avg_losses = np.vstack((np.zeros([avg_wl-1, avg_losses.shape[1]]).astype(bool), avg_losses))
+    print(avg_losses.shape)
+
+
+    results = compare_with_threshold(avg_losses, thresholds)
+    # results = compare_with_threshold_max(avg_losses, thresholds)
+
     print(f'results shape: {results.shape}')
     # print(np.all(results==False))
     spans = detect_results_to_spans(results)  # shape: [feature_size, threshold_size, ...]
     print(spans)
+
+    threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = span_analyze(spans, anomalies, normalized_attack_serials.shape[0])
+
 
     path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'attack-{model_name}')
     os.makedirs(path, exist_ok=True)
@@ -260,14 +323,16 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
               outputs=outputs, feature_names=remain_features, spans=spans,
               path=path)
 
+    return f'{"Bi" if bidirection else "Uni"} {f"{attn_layer}lyr" if attention else "No"}-Attn', threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
+           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration
+
 def lstm(window_len=50, sample_interval=10,
          jump=0, batch_size=64, epochs_num=20,
          attention=False, attn_layer=12,
          dense_dim=32, cell_num=128, bi=True,
          test_only=False, data_file=None, scenario='bare', plot_loss=False):
     train_inputs, train_targets, train_normalized_time_serials, features, train_scalers = sample_from_csv(
-        data_file, window_size=window_len, interval=sample_interval, jump=jump,
-        check=True)
+        data_file, window_size=window_len, interval=sample_interval, jump=jump)
     # test_inputs, test_targets, test_normalized_time_serials, _, _ = sample_from_csv('outside_at_end.csv', window_size=monitor_window_length, interval=0, jump=target_skip_steps, check=True, ignore_control=ignore_control, scalers=train_scalers)
     test_inputs = train_inputs[-2000:]
     test_targets = train_targets[-2000:]
@@ -382,33 +447,79 @@ def lstm(window_len=50, sample_interval=10,
 #                      cell_num=128, dense_dim=64, epochs=100,
 #                      bidirection=True, attention=False, attn_layer=4, scenario=scenario, split=(6,2,2), attack_ids=remain_feature_ids) # [6,8,14]
 #
-# scenario = 'kf'
+
+epoch_num = 30
+batch_size = 128
+wl = 60
+cell_num = 32
+# scenario = 'pid_kf'
 # data_file = 'canvas_semi_auto_pid_kf.csv'
+# file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
+
 scenario = 'simu'
 data_file = 'aircraft_pitch.csv'
 file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'simulator', data_file)
 attack_ids = remain_feature_ids
 
-detect_anomalies(file_path=file_path, window_length=100, jump=0, batch_size=64,
-                     cell_num=3, dense_dim=64, epochs=100,
-                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids) # [6,8,14]
-
-detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
-                     cell_num=128, dense_dim=64, epochs=100,
-                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids) # [6,8,14]
-
-detect_anomalies(file_path=file_path, window_length=50, jump=0, batch_size=64,
-                     cell_num=256, dense_dim=128, epochs=100,
-                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids) # [6,8,14]
-
-detect_anomalies(file_path=file_path, window_length=100, jump=0, batch_size=64,
-                     cell_num=256, dense_dim=128, epochs=100,
-                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids) # [6,8,14]
-
-detect_anomalies(file_path=file_path, window_length=200, jump=0, batch_size=64,
-                     cell_num=256, dense_dim=128, epochs=100,
-                     bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=False, attention=False, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=False, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=False, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=True, attn_layer=2, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=True, attn_layer=4, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=True, attn_layer=8, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
+# detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+#                      cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+#                      bidirection=True, attention=True, attn_layer=16, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=False) # [6,8,14]
 #
+# exit(0)
+
+# model_names = []
+# threshold_TP_rates = []
+# threshold_TP_avg_delays = []
+# threshold_FP_pers = []
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
+           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+                     bidirection=False, attention=False, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
+
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
+           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+                     bidirection=False, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
+
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
+           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
+                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+                     bidirection=False, attention=True, attn_layer=4, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
+
+
+# df = pd.DataFrame(np.hstack([np.array(model_names).reshape([-1,1]), np.array(threshold_TP_rates), np.array(threshold_TP_avg_delays), np.array(threshold_FP_pers)]),
+#                        columns=['model_names']+[f'TPR_{i}' for i in range(5)]+[f'TP_avg_delay_{i}' for i in range(5)]+[f'FP_percentage{i}' for i in range(5)])
+# file_path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'detection_res-{cell_num}cell-wl{wl}.csv')
+#
+# df.to_csv(file_path, index=False)
+#
+# plot_detect_res(file_path)
+
+
 # scenario = 'pid_kf'
 # data_file = 'canvas_semi_auto_pid_kf.csv'
 # file_path = os.path.join(ROOT_DIR, '..', 'data', 'testbed', 'barnes', data_file)
