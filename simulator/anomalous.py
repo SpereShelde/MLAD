@@ -10,9 +10,6 @@ import numpy as np
 exp = aircraft_pitch
 # exp = dc_motor_position
 # exp = quadrotor
-attack = 'modification'
-# attack = 'delay'
-# attack = 'replay'
 
 # load model
 dt = exp.Ts
@@ -49,9 +46,15 @@ x_measure_unatt_arr = []
 x_prediction = None
 x_prediction_arr = []
 
-att = exp.attacks[attack]
-t_att_start = att['start']
-t_att_end = att['end']
+att_starts = exp.attacks['starts']
+att_ends = exp.attacks['ends']
+att_durations = exp.attacks['durations']
+att_types = exp.attacks['types']
+att_values = exp.attacks['values']
+
+att_idx = 0
+current_att = [att_starts[att_idx], att_ends[att_idx], att_durations[att_idx], att_types[att_idx], att_values[att_idx]]
+att_idx += 1
 
 for i in range(0, exp.slot + 1):
     # for i in range(0, 3):
@@ -75,18 +78,24 @@ for i in range(0, exp.slot + 1):
     x_measure_unatt_arr.append(x_measure.copy())
 
     # attack!
-    if t_att_start <= i:
-        if attack == 'modification':
-            x_measure[exp.x_index] = att['func'](x_measure[exp.x_index])
-        elif attack == 'delay':
+    if current_att[0] <= i <= current_att[1]:
+        att_type = current_att[2]
+        if att_type == 0:
+            x_measure[exp.x_index] += current_att[-1]
+        elif att_type == 1:
             if i - t_att_start > att['step']:
                 x_measure[exp.x_index] = x_measure_unatt_arr[i-att['step']][exp.x_index]
             else:
                 x_measure[exp.x_index] = x_measure_unatt_arr[t_att_start-1][exp.x_index]
-        elif attack == 'replay':
+        elif att_type == 2:
             j = i-t_att_start
             # print(x_measure_unatt_arr[att['first']+j])
             x_measure[exp.x_index] = x_measure_unatt_arr[att['first']+j][exp.x_index]
+            
+    if current_att[1] < i:
+        current_att = [att_starts[att_idx], att_ends[att_idx], att_durations[att_idx], att_types[att_idx],
+                       att_values[att_idx]]
+        att_idx += 1
 
     if exp.y_index:
         y_measure = (np.asarray(exp.sysc.C) @ x_measure)[exp.y_index]

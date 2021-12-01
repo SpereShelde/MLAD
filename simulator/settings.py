@@ -200,16 +200,16 @@ while len(exp.ref) < steps:
 exp.ref = exp.ref[:steps]
 
 # attacks
-exp.attacks = {'modification': {}, 'delay': {}, 'replay': {}}
-exp.attacks['modification']['func'] = partial((lambda x, y: x + y), y=0.5)
-exp.attacks['modification']['start'] = int(6 / dt)
-exp.attacks['modification']['end'] = int(7.5 / dt)
-exp.attacks['delay']['step'] = 60
-exp.attacks['delay']['start'] = int(5 / dt)
-exp.attacks['delay']['end'] = int(7.5 / dt)
-exp.attacks['replay']['first'] = int(5 / dt)
-exp.attacks['replay']['start'] = int(6 / dt)
-exp.attacks['replay']['end'] = int(3.5 / dt)
+# exp.attacks = {'modification': {}, 'delay': {}, 'replay': {}}
+# exp.attacks['modification']['func'] = partial((lambda x, y: x + y), y=0.5)
+# exp.attacks['modification']['start'] = int(6 / dt)
+# exp.attacks['modification']['end'] = int(7.5 / dt)
+# exp.attacks['delay']['step'] = 60
+# exp.attacks['delay']['start'] = int(5 / dt)
+# exp.attacks['delay']['end'] = int(7.5 / dt)
+# exp.attacks['replay']['first'] = int(5 / dt)
+# exp.attacks['replay']['start'] = int(6 / dt)
+# exp.attacks['replay']['end'] = int(3.5 / dt)
 
 attack_intervals = np.random.poisson(150, math.floor(steps / 150))
 attack_starts = np.cumsum(attack_intervals)
@@ -231,10 +231,14 @@ for i, att in enumerate(attacK_types):
         attack_values.append(direction*bias)
     elif att == 1:
         duration = attack_durations[i]
-        delay = random.randint(20, duration)
+        delay = random.randint(int(duration*0.1), int(duration*0.6))
         attack_values.append(delay)
     else:
-        loop = random.randint(20, 60)
+        duration = attack_durations[i]
+        loop = random.randint(int(duration*0.1), int(duration*0.3))
+        attack_values.append(loop)
+
+exp.attacks = {'starts': attack_starts, 'ends': attack_ends, 'durations': attack_durations, 'types': attacK_types, 'values': attack_values}
 
 # graph
 exp.sep_graph = True
