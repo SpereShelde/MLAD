@@ -10,7 +10,7 @@ class Exp:
     __slots__ = ['name', 'sysc', 'Ts', 'sysd', 'x_0', 'y_0', 'p', 'i', 'd', 'ref',
                  'control_limit', 'y_index', 'slot', 't_arr', 'attacks',
                  'sep_graph', 'epsilon', 'threshold', 'safeset', 'y_label',
-                 'detection_window_1', 'detection_window_2', 'detection_window_init', 'x_index', 'seed'
+                 'detection_window_1', 'detection_window_2', 'detection_window_init', 'x_index', 'seed', 'subfig_shape', 'one_graph_length'
                  ]
 
     def __init__(self, sysc, Ts):
@@ -152,7 +152,7 @@ exp.attacks['replay']['seed'] = 4 #4,8, until 51
 exp.y_label = 'Capacitor Voltage'
 
 # ------- Aircraft Pitch -------------
-seed = 10
+seed = 22
 random.seed(seed)
 np.random.seed(seed)
 
@@ -177,7 +177,7 @@ control_up = 7
 exp.control_limit = {'lo': np.array([control_lo]), 'up': np.array([control_up])}
 exp.epsilon = 1e-17
 exp.safeset = {'lo': np.array([-np.inf, -np.inf, -2.5]), 'up': np.array([np.inf, np.inf, 2.5])}
-exp.x_index = random.choice([i for i in range(len(exp.x_0))])   # anomalous index
+exp.x_index = 2   # anomalous index
 
 # control
 exp.p = 14
@@ -216,7 +216,7 @@ attack_starts = np.cumsum(attack_intervals)
 attack_durations = np.random.poisson(50, len(attack_intervals))
 attack_ends = attack_starts + attack_durations
 
-attack_ends = attack_ends[attack_ends < steps]
+attack_ends = attack_ends[attack_ends < steps-50]
 attack_durations = attack_durations[:len(attack_ends)]
 attack_starts = attack_starts[:len(attack_ends)]
 attacK_types = np.random.choice([0, 1, 2], len(attack_ends))
@@ -235,22 +235,15 @@ for i, att in enumerate(attacK_types):
         attack_values.append(delay)
     else:
         duration = attack_durations[i]
-        loop = random.randint(int(duration*0.1), int(duration*0.3))
-        attack_values.append(loop)
+        replay = random.randint(int(duration*0.1), int(duration*0.3))
+        attack_values.append(replay)
 
 exp.attacks = {'starts': attack_starts, 'ends': attack_ends, 'durations': attack_durations, 'types': attacK_types, 'values': attack_values}
 
 # graph
 exp.sep_graph = True
-# exp.attacks['modification']['xlim'] = (6.8, 7.4)
-# exp.attacks['modification']['ylim'] = (0, 1.5)
-# exp.attacks['modification']['seed'] = 0  # 26
-# exp.attacks['delay']['xlim'] = (4.8, 5.4)
-# exp.attacks['delay']['ylim'] = (-0.1, 0.8)
-# exp.attacks['delay']['seed'] = 31
-# exp.attacks['replay']['xlim'] = (5.4, 6.45)
-# exp.attacks['replay']['ylim'] = (0.4, 0.95)
-# exp.attacks['replay']['seed'] = 54  # 29
+exp.subfig_shape = (3, 1)
+exp.one_graph_length = 400
 exp.y_label = 'Pitch'
 
 

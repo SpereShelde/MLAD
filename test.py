@@ -4,7 +4,7 @@ import random
 # import tensorflow as tf
 import pandas as pd
 
-a = np.random.choice([0,1,2], 10)
+a =  7 % 1
 print(a)
 
 # print(df)

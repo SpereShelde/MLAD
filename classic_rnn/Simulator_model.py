@@ -6,16 +6,11 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
-
 from keras_multi_head import MultiHead
 import pandas as pd
 
 tf.get_logger().setLevel('ERROR')
 tf.keras.backend.set_floatx('float64')
-from sklearn.preprocessing import MinMaxScaler
-from tools.anomaly_creator import insert_super_anomalies, print_all, sample_from_np, detect_results_to_spans, \
-    compare_with_threshold, span_analyze
-
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 simulator_model = 'aircraft_pitch'
