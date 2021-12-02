@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
-
 def get_scalers(df):
     scalers = []
     for feature in df.columns:
@@ -27,7 +26,12 @@ anomalous_file_names = [f for f in os.listdir('.') if f[-3:] == "csv" and f[:9] 
 raw_train_df = pd.concat((pd.read_csv(f) for f in benign_file_names), ignore_index=True)
 scalers = get_scalers(raw_train_df)
 
-for file in benign_file_names+anomalous_file_names:
+for file in benign_file_names:
+    df = pd.read_csv(file)
+    scaled_df = scale_df(df, scalers)
+    scaled_df.to_csv(f'scaled-{file}', index=False)
+
+for file in anomalous_file_names:
     df = pd.read_csv(file)
     scaled_df = scale_df(df, scalers)
     scaled_df.to_csv(f'scaled-{file}', index=False)

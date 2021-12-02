@@ -176,23 +176,29 @@ ref = np.array(ref).reshape([-1, 1])
 cin_arr = np.array(cin_arr).reshape([-1, 1])
 cin_arr_att = np.array(cin_arr_att).reshape([-1, 1])
 
+benign_cols = ['ref'] + [f'x{i+1}' for i in range(len(exp.x_0))] + ['cin']
 benign = np.hstack([ref, x_measure_arr, cin_arr])
-anomalous = np.hstack([ref, x_measure_arr_att, cin_arr_att])
-benign_pd = pd.DataFrame(benign)
-anomalous_pd = pd.DataFrame(anomalous)
+benign_pd = pd.DataFrame(benign, columns=benign_cols)
 
-cols = ['ref'] + [f'x{i+1}' for i in range(len(exp.x_0))] + ['cin']
-benign_pd.to_csv(f'benign-{exp.seed}.csv', columns=cols, index=False)
-anomalous_pd.to_csv(f'anomalous-{exp.seed}.csv', columns=cols, index=False)
+anomalous_cols = ['ref'] + [f'x{i+1}' for i in range(len(exp.x_0))] + ['cin'] + [f'ux{i+1}' for i in range(len(exp.x_0))] + ['type', 'val']
+anomalies = np.ones((cin_arr_att.shape[0], 2)) * -1
+for i, type in enumerate(att_types):
+    anomalies[att_starts[i]:att_ends[i]+1, 0] = i
+    anomalies[att_starts[i]:att_ends[i]+1, 1] = att_values[i]
+anomalous = np.hstack([ref, x_measure_arr_att, cin_arr_att, x_measure_unatt_arr_att, anomalies])
+anomalous_pd = pd.DataFrame(anomalous, columns=anomalous_cols)
+
+# benign_pd.to_csv(f'benign-{exp.seed}.csv', index=False)
+anomalous_pd.to_csv(f'anomalous-{exp.seed}.csv', index=False)
 exit(0)
 
 if exp.sep_graph:
-    len_total = exp.one_graph_length * 3
+    len_total = exp.one_graph_length * 1
     # len_total = x_measure_arr.shape[0]
     ploted = 0
     while ploted < len_total:
         to_plot = min(ploted + exp.one_graph_length, len_total)
-        fig, ax = plt.subplots(nrows=exp.subfig_shape[0], ncols=exp.subfig_shape[1], figsize=(30, 16))
+        fig, ax = plt.subplots(nrows=exp.subfig_shape[0], ncols=exp.subfig_shape[1], figsize=(28, 15))
 
         for i in range(x_measure_arr.shape[1]):
             row = math.floor(i / exp.subfig_shape[1])
@@ -204,25 +210,49 @@ if exp.sep_graph:
             else:
                 ax[row, col].plot(x_measure_arr_att[ploted:to_plot, i], label='anomalous', c='r', marker='.')
                 # ax[row, col].plot(x_measure_arr[ploted:to_plot, i], label='benign', c='b', marker='.')
-                ax[row].plot(x_measure_unatt_arr_att[ploted:to_plot, i], label='benign', c='b', marker='.')
+                # ax[row].plot(x_measure_unatt_arr_att[ploted:to_plot, i], label='benign', c='b', marker='.')
         ax[-1].plot(ref[ploted:to_plot], label='benign', c='g', marker='.')
 
         legend_elements = []
-        ax.legend(handles=legend_elements, loc='right', fontsize=12)
-        for i in range(len(att_types)):
+        for i, type in enumerate(att_types):
             start = att_starts[i]
             end = att_ends[i]
-            type = att_types[i]
             value = att_values[i]
+            span_start = start
+            span_end = end
+            skip_this_span = False
             if ploted <= start <= end <= to_plot:
-                legend_elements.append(Patch(facecolor='y', edgecolor='y', label=f'{type}-{value:0.2f}'))
-                if exp.subfig_shape[1] == 1:
-                    ax[0].axvspan(start, end, facecolor='y', alpha=0.5)
-                    ax[1].axvspan(start, end, facecolor='y', alpha=0.5)
-                    ax[2].axvspan(start, end, facecolor='y', alpha=0.5)
-                else:
-                    pass
+                pass
+            elif ploted <= start <= to_plot < end:
+                span_end = to_plot
+            elif start < ploted <= end <= to_plot:
+                span_start = ploted
+            elif start < ploted <= to_plot < end:
+                span_start = ploted
+                span_end = to_plot
+            else:
+                # print(f'start: {start}, end: {end}, ploted: {ploted}, to_plot: {to_plot}')
+                skip_this_span = True
 
+            if not skip_this_span:
+                legend_elements.append(Patch(facecolor='r', edgecolor='r', label=f'{type}-{value:0.2f}'))
+
+                if exp.subfig_shape[1] == 1:
+                    for j in range(x_measure_arr.shape[1]):
+                        ax[j].axvspan(span_start, span_end, facecolor='y', alpha=0.5)
+                else:
+                    for j in range(exp.subfig_shape[0]):
+                        for k in range(exp.subfig_shape[1]):
+                            ax[j, k].axvspan(span_start, span_end, facecolor='y', alpha=0.5)
+
+        if exp.subfig_shape[1] == 1:
+            for j in range(x_measure_arr.shape[1]):
+                ax[j].legend(handles=legend_elements, loc='upper right', fontsize=12)
+
+        else:
+            for j in range(exp.subfig_shape[0]):
+                for k in range(exp.subfig_shape[1]):
+                    ax[j, k].legend(handles=legend_elements, loc='upper right', fontsize=12)
 
         ploted = to_plot
         plt.show()
