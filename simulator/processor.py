@@ -30,5 +30,5 @@ scalers = get_scalers(raw_train_df)
 for file in benign_file_names+anomalous_file_names:
     df = pd.read_csv(file)
     scaled_df = scale_df(df, scalers)
-    scaled_df.to_csv(f'scaled-{file}')
+    scaled_df.to_csv(f'scaled-{file}', index=False)
 

@@ -14,16 +14,14 @@ tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 simulator_model = 'aircraft_pitch'
+# omit_features = ['Reference', 'Control']
+# output_features = ['Sate_1', 'Sate_2', 'Sate_3']
+# input_features = ['Control', 'Sate_1', 'Sate_2', 'Sate_3']
 
 data_dir_path = os.path.join(ROOT_DIR, '..', 'data', 'simulator', simulator_model)
 result_dir_path = os.path.join(ROOT_DIR, 'results', 'simulator', simulator_model)
 model_weights_dir_path = os.path.join(ROOT_DIR, 'models_weights', 'simulator_models', simulator_model)
 
-# omit_features = ['Reference', 'Control']
-output_features = ['Measure', 'Sate_1', 'Sate_2', 'Sate_3']
-input_features = ['Control', 'Measure', 'Sate_1', 'Sate_2', 'Sate_3']
-output_feature_ids = [2,3,4,5]
-input_feature_ids = [1,2,3,4,5]
 # id_project = dict(zip(remain_feature_ids, range(len(remain_feature_ids))))
 
 jump = 0

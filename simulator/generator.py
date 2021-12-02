@@ -172,17 +172,19 @@ for i in range(0, exp.slot + 1):
 x_measure_arr = np.array(x_measure_arr)
 x_measure_arr_att = np.array(x_measure_arr_att)
 x_measure_unatt_arr_att = np.array(x_measure_unatt_arr_att)
-ref = np.array(ref)
+ref = np.array(ref).reshape([-1, 1])
 cin_arr = np.array(cin_arr).reshape([-1, 1])
 cin_arr_att = np.array(cin_arr_att).reshape([-1, 1])
 
-# benign = np.hstack([x_measure_arr, cin_arr])
-# anomalous = np.hstack([x_measure_arr_att, cin_arr_att])
-# benign_pd = pd.DataFrame(benign)
-# anomalous_pd = pd.DataFrame(anomalous)
-# benign_pd.to_csv(f'benign-{exp.seed}.csv')
-# anomalous_pd.to_csv(f'anomalous-{exp.seed}.csv')
-# exit(0)
+benign = np.hstack([ref, x_measure_arr, cin_arr])
+anomalous = np.hstack([ref, x_measure_arr_att, cin_arr_att])
+benign_pd = pd.DataFrame(benign)
+anomalous_pd = pd.DataFrame(anomalous)
+
+cols = ['ref'] + [f'x{i+1}' for i in range(len(exp.x_0))] + ['cin']
+benign_pd.to_csv(f'benign-{exp.seed}.csv', columns=cols, index=False)
+anomalous_pd.to_csv(f'anomalous-{exp.seed}.csv', columns=cols, index=False)
+exit(0)
 
 if exp.sep_graph:
     len_total = exp.one_graph_length * 3
