@@ -1,5 +1,6 @@
 import math
 import os
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import numpy as np
 import tensorflow as tf
@@ -12,11 +13,14 @@ import pandas as pd
 tf.get_logger().setLevel('ERROR')
 tf.keras.backend.set_floatx('float64')
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+do_log = True
 
 simulator_model = 'aircraft_pitch'
-# omit_features = ['Reference', 'Control']
-# output_features = ['Sate_1', 'Sate_2', 'Sate_3']
-# input_features = ['Control', 'Sate_1', 'Sate_2', 'Sate_3']
+all_features = ['ref', 'x1', 'x2', 'x3', 'cin']
+input_features = ['x1', 'x2', 'x3', 'cin']
+input_feature_ids = [1, 2, 3, 4]
+output_features = ['x1', 'x2', 'x3']
+output_feature_ids = [1, 2, 3]
 
 data_dir_path = os.path.join(ROOT_DIR, '..', 'data', 'simulator', simulator_model)
 result_dir_path = os.path.join(ROOT_DIR, 'results', 'simulator', simulator_model)
@@ -26,38 +30,55 @@ model_weights_dir_path = os.path.join(ROOT_DIR, 'models_weights', 'simulator_mod
 
 jump = 0
 batch_size = 64
+sample_interval = 2
 
-def read_csv(file_path):
-    df = pd.read_csv(file_path)
-    feature_names = df.columns
-    return df, feature_names
+benign_file_names = [f for f in os.listdir(data_dir_path) if f[-3:] == "csv" and f[:13] == "scaled-benign"]
+anomalous_file_names = [f for f in os.listdir(data_dir_path) if f[-3:] == "csv" and f[:16] == "scaled-anomalous"]
 
-def get_scalers_df(df):
-    scalers = dict()
-    for col in df.columns:
-        col_df = df[col].to_numpy().reshape((-1, 1))
-        scaler = MinMaxScaler()
-        scaler.fit(col_df)
-        scalers[col] = scaler
-    return scalers
+def log(content):
+    if do_log:
+        print(content)
 
-def scale_time_serials_df(df, scalers):
-    normalized_time_serials = []
-    for col in df.columns:
-        col_df = df[col].to_numpy().reshape((-1, 1))
-        scaler = scalers[col]
-        normalized_time_serials.append(scaler.transform(col_df))
-    normalized_time_serials = np.hstack(normalized_time_serials)
-    return normalized_time_serials
-
-def serials_to_samples(time_serials, window_length=50, interval=1, jump=0):
+def sample_from_df(dfs, window_length=50, interval=sample_interval, jump=jump):
     inputs = []
     targets = []
-    size = time_serials.shape[0]
-    for i in range(0, size - window_length - 1 - jump, interval):
-        inputs.append(time_serials[i:i + window_length, input_features])
-        targets.append(time_serials[i+window_length+jump, output_features])
-    return np.array(inputs), np.vstack(targets)
+    for df in dfs:
+        serials = df.to_numpy()
+        length = serials.shape[0]
+        for i in range(0, length - window_length - jump - 1, interval):
+            inputs.append(serials[i:i+window_length, input_feature_ids])
+            targets.append([serials[i+window_length+jump, output_feature_ids]])
+    inputs = np.array(inputs)
+    targets = np.vstack(targets)
+    return inputs, targets
+
+def load_model_weights(window_length=50, jump=jump, batch_size=batch_size,
+                       input_feature_num=15, target_feature_num=8, cell_num=128, dense_dim=64,
+                       bidirection=False, attn_layer=1):
+    model = keras.Sequential()
+    a_layer = layers.LSTM(cell_num, return_sequences=False)
+    if bidirection:
+        a_layer = layers.Bidirectional(a_layer)
+    if attn_layer > 0:
+        a_layer = MultiHead(a_layer, layer_num=attn_layer)
+    model.add(a_layer)
+    if attn_layer > 0:
+        model.add(layers.Flatten())
+    model.add(layers.Dense(dense_dim))
+    model.add(layers.Dense(target_feature_num))
+    model.build(input_shape=(batch_size, window_length, input_feature_num))
+    model.compile(optimizer='adam', loss='mse')
+    # model.compile(optimizer='adam', loss=loss_fn)
+
+    model_name = f'{cell_num}cell-{"Bi" if bidirection else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attn_layer > 0 else ""}wl{window_length}-jp{jump}-{dense_dim}'
+
+    best_epoch = find_lowest_loss_epoch(model_name)
+
+    model_weight_path = os.path.join(model_weights_dir_path, f'{model_name}', f'epoch{best_epoch}/checkpoint')
+    if os.path.exists(model_weight_path):
+        print("Load Model")
+        model.load_weights(model_weight_path)
+    return model, model_name, model_weight_path, best_epoch
 
 def print_train_loss(inputs_train, targets_train, model, model_name):
     outputs = []
@@ -79,32 +100,33 @@ def print_train_loss(inputs_train, targets_train, model, model_name):
     df = pd.DataFrame(data=losses, columns=output_features)
     df.to_csv(os.path.join(result_dir_path, f'loss-{model_name}.csv'), index=False)
 
+
 def train_model(window_length=50, epochs_num=10, cell_num=128, dense_dim=64,
-         bidirection=False, attention=False, attn_layer=4):
-    train_df, _ = read_csv(os.path.join(data_dir_path, 'aircraft_pitch.csv'))
-    evaluation_df, _ = read_csv(os.path.join(data_dir_path, 'aircraft_pitch_vali.csv'))
-    # test_df, _ = read_csv(os.path.join(data_dir_path, 'aircraft_pitch_test.csv'))
+                bidirection=False, attn_layer=4):
+    attention = True if attn_layer > 0 else False
 
-    scalers = get_scalers_df(train_df)
+    validate_file_name = benign_file_names[-1]
+    normalized_train_dfs = [pd.read_csv(os.path.join(data_dir_path, f)) for f in benign_file_names[:-1]]
+    normalized_validate_df = pd.read_csv(os.path.join(data_dir_path, validate_file_name))
+    log(f'Collected {len(normalized_train_dfs)} files for training; use {validate_file_name} as validation')
 
-    normalized_train_serials = scale_time_serials_df(train_df, scalers)
-    normalized_evaluation_serials = scale_time_serials_df(evaluation_df, scalers)
-    # normalized_test_serials = scale_time_serials_df(test_df, scalers)
+    train_inputs, train_targets = sample_from_df(normalized_train_dfs, window_length=window_length)
+    validate_inputs, validate_targets = sample_from_df([normalized_validate_df], window_length=window_length)
 
-    train_inputs, train_targets = serials_to_samples(time_serials=normalized_train_serials, window_length=window_length)
-    evaluation_inputs, evaluation_targets = serials_to_samples(time_serials=normalized_evaluation_serials, window_length=window_length)
-    # test_inputs, test_targets = serials_to_samples(time_serials=normalized_test_serials, window_length=window_length)
-
-    model, model_name, model_weight_path, epoch_num = load_model_weights(window_length=window_length, jump=jump, batch_size=batch_size,
-                       input_feature_num=len(input_features), target_feature_num=len(output_features), cell_num=cell_num, dense_dim=dense_dim,
-                       bidirection=bidirection, attention=attention, attn_layer=attn_layer)
+    model, model_name, model_weight_path, epoch_num = load_model_weights(window_length=window_length, jump=jump,
+                                                                         batch_size=batch_size,
+                                                                         input_feature_num=len(input_features),
+                                                                         target_feature_num=len(output_features),
+                                                                         cell_num=cell_num, dense_dim=dense_dim,
+                                                                         bidirection=bidirection, attention=attention,
+                                                                         attn_layer=attn_layer)
 
     if epochs_num > 0:
         evaluation_res = []
         train_res = []
         epoch_nums = []
         for i in range(epochs_num):
-            epoch_num = epoch_num+1+i
+            epoch_num = epoch_num + 1 + i
             h = model.fit(train_inputs, train_targets, batch_size=batch_size, epochs=1,
                           shuffle=True, verbose=0)
             eval_loss = model.evaluate(evaluation_inputs, evaluation_targets, verbose=0)
@@ -136,48 +158,26 @@ def train_model(window_length=50, epochs_num=10, cell_num=128, dense_dim=64,
 
         print_train_loss(evaluation_inputs, evaluation_targets, model, model_name)
 
+
 def define_threshold(model_name):
-    losses = pd.read_csv(os.path.join(result_dir_path, f'loss-{model_name}.csv'), index = False)
+    losses = pd.read_csv(os.path.join(result_dir_path, f'loss-{model_name}.csv'), index=False)
     sorted_losses = np.sort(losses.values, axis=0)
     end = sorted_losses[-1]
-    thresholds = np.array([end*0.8, end*0.9, end, end*1.1, end*1.2])
+    thresholds = np.array([end * 0.8, end * 0.9, end, end * 1.1, end * 1.2])
     return thresholds
+
 
 def find_lowest_loss_epoch(model_name):
     try:
         history_df = pd.read_csv(os.path.join(result_dir_path, f'history-{model_name}'))
         row_id_min_eval_loss = history_df['eval_loss'].idxmin()
-        return row_id_min_eval_loss+1
+        return row_id_min_eval_loss + 1
     except:
         return 0
 
-def load_model_weights(window_length=50, jump=0, batch_size=64,
-                       input_feature_num=15, target_feature_num=8, cell_num=128, dense_dim=64,
-                       bidirection=False, attention=True, attn_layer=1):
-    model = keras.Sequential()
-    a_layer = layers.LSTM(cell_num, return_sequences=False)
-    if bidirection:
-        a_layer = layers.Bidirectional(a_layer)
-    if attention:
-        a_layer = MultiHead(a_layer, layer_num=attn_layer)
-    model.add(a_layer)
-    if attention:
-        model.add(layers.Flatten())
-    model.add(layers.Dense(dense_dim))
-    model.add(layers.Dense(target_feature_num))
-    model.build(input_shape=(batch_size, window_length, input_feature_num))
-    model.compile(optimizer='adam', loss='mse')
-    # model.compile(optimizer='adam', loss=loss_fn)
 
-    model_name = f'{cell_num}cell-{"Bi" if bidirection else "Uni"}-LSTM-{f"{attn_layer}lyrs-Attn-" if attention else ""}wl{window_length}-jp{jump}-{dense_dim}'
 
-    best_epoch = find_lowest_loss_epoch(model_name)
 
-    model_weight_path = os.path.join(model_weights_dir_path, f'{model_name}', f'epoch{best_epoch}/checkpoint')
-    if os.path.exists(model_weight_path):
-        print("Load Model")
-        model.load_weights(model_weight_path)
-    return model, model_name, model_weight_path, best_epoch
 
 def print_loss(title, losses, features, path):
     plt.figure(figsize=(30, 16))
@@ -195,6 +195,7 @@ def print_loss(title, losses, features, path):
             # plt.show()
             break
 
+
 def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
                      cell_num=128, dense_dim=64, epochs=50,
                      bidirection=True, attention=True, attn_layer=4, attack_ids=None, avg_wl=3):
@@ -211,7 +212,8 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
     scalers = get_scalers_df(train_df)
 
     normalized_anomaly_serials = scale_time_serials_df(anomaly_df, scalers)
-    anomaly_inputs, anomaly_targets = serials_to_samples(time_serials=normalized_anomaly_serials, window_length=window_length)
+    anomaly_inputs, anomaly_targets = serials_to_samples(time_serials=normalized_anomaly_serials,
+                                                         window_length=window_length)
 
     print(f'normalized_attack_serials shape: {normalized_attack_serials.shape}')
     print(f'anomalies:')
@@ -260,7 +262,8 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
             res = model.evaluate(test_inputs, test_targets)
             print(res)
 
-            print_loss(model_name, train_losses, remain_features, os.path.join(ROOT_DIR, "results", 'testbed', scenario))
+            print_loss(model_name, train_losses, remain_features,
+                       os.path.join(ROOT_DIR, "results", 'testbed', scenario))
 
         # return
 
@@ -272,7 +275,7 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
     for i in range(0, attack_inputs.shape[0], 100):
         outputs.append(model(attack_inputs[i:i + 100, :, :]))
     outputs = np.vstack(outputs)
-    outputs = np.vstack((normalized_attack_serials[:window_length+jump+1], outputs))
+    outputs = np.vstack((normalized_attack_serials[:window_length + jump + 1], outputs))
     print(f'outputs shape: {outputs.shape}')
 
     losses = np.abs(normalized_attack_serials - outputs)
@@ -289,9 +292,8 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
         avg_losses.append(a_avg_loss.reshape([-1, 1]))
 
     avg_losses = np.hstack(avg_losses)
-    avg_losses = np.vstack((np.zeros([avg_wl-1, avg_losses.shape[1]]).astype(bool), avg_losses))
+    avg_losses = np.vstack((np.zeros([avg_wl - 1, avg_losses.shape[1]]).astype(bool), avg_losses))
     print(avg_losses.shape)
-
 
     results = compare_with_threshold(avg_losses, thresholds)
     # results = compare_with_threshold_max(avg_losses, thresholds)
@@ -301,8 +303,8 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
     spans = detect_results_to_spans(results)  # shape: [feature_size, threshold_size, ...]
     print(spans)
 
-    threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = span_analyze(spans, anomalies, normalized_attack_serials.shape[0])
-
+    threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = span_analyze(
+        spans, anomalies, normalized_attack_serials.shape[0])
 
     path = os.path.join(ROOT_DIR, "results", 'testbed', scenario, f'attack-{model_name}')
     os.makedirs(path, exist_ok=True)
@@ -310,7 +312,7 @@ def detect_anomalies(file_path, window_length=50, jump=0, batch_size=64,
               outputs=outputs, feature_names=remain_features, spans=spans,
               path=path)
 
-    return f'{"Bi" if bidirection else "Uni"} {f"{attn_layer}lyr" if attention else "No"}-Attn', threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
+    return f'{"Bi" if bidirection else "Uni"} {f"{attn_layer}lyr" if attention else "No"}-Attn', threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, \
            threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration
 
 
@@ -373,24 +375,32 @@ attack_ids = remain_feature_ids
 # threshold_TP_rates = []
 # threshold_TP_avg_delays = []
 # threshold_FP_pers = []
-model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
-           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
-                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
-                     bidirection=False, attention=False, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
-print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, \
+threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(
+    file_path=file_path, window_length=wl, batch_size=batch_size,
+    cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+    bidirection=False, attention=False, attn_layer=1, scenario=scenario, split=(7, 2, 1), attack_ids=attack_ids,
+    detect=True)  # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg,
+      threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
 
-model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
-           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
-                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
-                     bidirection=False, attention=True, attn_layer=1, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
-print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, \
+threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(
+    file_path=file_path, window_length=wl, batch_size=batch_size,
+    cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+    bidirection=False, attention=True, attn_layer=1, scenario=scenario, split=(7, 2, 1), attack_ids=attack_ids,
+    detect=True)  # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg,
+      threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
 
-model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per,\
-           threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(file_path=file_path, window_length=wl, batch_size=batch_size,
-                     cell_num=cell_num, dense_dim=64, epochs=epoch_num,
-                     bidirection=False, attention=True, attn_layer=4, scenario=scenario, split=(7,2,1), attack_ids=attack_ids, detect=True) # [6,8,14]
-print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
-
+model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, \
+threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration = detect_anomalies(
+    file_path=file_path, window_length=wl, batch_size=batch_size,
+    cell_num=cell_num, dense_dim=64, epochs=epoch_num,
+    bidirection=False, attention=True, attn_layer=4, scenario=scenario, split=(7, 2, 1), attack_ids=attack_ids,
+    detect=True)  # [6,8,14]
+print(model_name, threshold_anomaly_TP_rate, threshold_anomaly_detect_duration_per, threshold_anomaly_detect_delay_avg,
+      threshold_FP_per, anomaly_size, anomalous_duration, normal_duration)
 
 # df = pd.DataFrame(np.hstack([np.array(model_names).reshape([-1,1]), np.array(threshold_TP_rates), np.array(threshold_TP_avg_delays), np.array(threshold_FP_pers)]),
 #                        columns=['model_names']+[f'TPR_{i}' for i in range(5)]+[f'TP_avg_delay_{i}' for i in range(5)]+[f'FP_percentage{i}' for i in range(5)])
