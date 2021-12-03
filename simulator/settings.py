@@ -177,7 +177,7 @@ control_up = 7
 exp.control_limit = {'lo': np.array([control_lo]), 'up': np.array([control_up])}
 exp.epsilon = 1e-17
 exp.safeset = {'lo': np.array([-np.inf, -np.inf, -2.5]), 'up': np.array([np.inf, np.inf, 2.5])}
-exp.x_index = 0   # anomalous index
+exp.x_index = 2   # anomalous index
 
 # control
 exp.p = 14

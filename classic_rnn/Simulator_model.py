@@ -42,6 +42,11 @@ def log(content):
     if do_log:
         print(content)
 
+def insert_noise(df, col_name, scale=0.01):
+    length = df.shape[0]
+    noise = np.random.normal(0, scale, length)
+    df[col_name] += noise
+
 def sample_from_df(dfs, window_length=50, interval=sample_interval, jump=jump):
     inputs = []
     targets = []
@@ -218,8 +223,6 @@ def plot_lines(**kwargs):
     x_axis = kwargs.get("x", np.arange(plot_length).reshape([-1,1]))
     one_graph_len = kwargs.get("one_graph_len", 400)
     feature_names = kwargs.get("feature_names", [f'feature-{i+1}' for i in range(feature_size)])
-    show = kwargs.get("show", False)
-    save_pah = kwargs.get("save_pah", None)
 
     if feature_size <= 3:
         rows = feature_size
@@ -235,29 +238,32 @@ def plot_lines(**kwargs):
 
         for i in range(feature_size):
             if cols == 1:
-                ax[i].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
-                ax[i].plot(x_axis, real[ploted:to_plot, i], label='Real', c='b', marker='.')
-                ax[i].plot(x_axis, prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
+                ax[i].plot(x_axis[ploted:to_plot], measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
+                ax[i].plot(x_axis[ploted:to_plot], real[ploted:to_plot, i], label='Real', c='b', marker='.')
+                ax[i].plot(x_axis[ploted:to_plot], prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
                 if i == feature_size-1:
-                    ax[i].plot(x_axis, cin[ploted:to_plot], label='cin', c='y', marker='.')
+                    ax[i].plot(x_axis[ploted:to_plot], cin[ploted:to_plot], label='cin', c='y', marker='.')
                     # ax[i].plot(x_axis, ref[ploted:to_plot], label='ref', c='orange', marker='.')
                 ax[i].legend(loc="upper right")
                 ax[i].set_title(f'{feature_names[i]}')
             else:
                 row = math.floor(i / cols)
                 col = i % cols
-                ax[row, col].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
-                ax[row, col].plot(x_axis, real[ploted:to_plot, i], label='Real', c='b', marker='.')
-                ax[row, col].plot(x_axis, prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
+                ax[row, col].plot(x_axis[ploted:to_plot], measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
+                ax[row, col].plot(x_axis[ploted:to_plot], real[ploted:to_plot, i], label='Real', c='b', marker='.')
+                ax[row, col].plot(x_axis[ploted:to_plot], prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
                 if i == feature_size-1:
-                    ax[row, col].plot(x_axis, cin[ploted:to_plot], label='cin', c='y', marker='.')
+                    ax[row, col].plot(x_axis[ploted:to_plot], cin[ploted:to_plot], label='cin', c='y', marker='.')
                 ax[row, col].legend(loc="upper right")
                 ax[row, col].set_title(f'{feature_names[i]}')
 
+        show = kwargs.get("show", False)
+        save_path = kwargs.get("save_path", None)
         if show:
             plt.show()
-        if save_pah is not None:
-            plt.savefig(os.path.join(save_pah, f'{ploted}-{to_plot}.png'))
+        if save_path is not None:
+            name = kwargs.get("name", 'NONAME')
+            plt.savefig(os.path.join(save_path, f'{name}-{ploted}-{to_plot}.png'))
         plt.close()
         ploted = to_plot
 
@@ -279,14 +285,29 @@ def detect_anomalies(window_length=50, cell_num=128, dense_dim=64, bidirection=F
         cin_df = complete_df[cin_features]
         ref_df = complete_df['ref']
         inputs, targets = sample_from_df([model_df], window_length=window_length, interval=1)
+
         prediction = compute_outputs(inputs, model)
         real = real_state_df.to_numpy()
         cin = cin_df.to_numpy()
         ref = ref_df.to_numpy()
-        plot_lines(measurement=targets, real=real[window_length+1:],
-                   prediction=prediction, cin=cin[window_length+1:],
+
+        # real = real[window_length:-1]
+        # print(targets[:5])
+        # print(real[:5])
+        #
+        # print('===')
+        # print(targets[-5:])
+        # print(real[-5:])
+
+        # print(targets.shape)
+        # print(real.shape)
+        # print(real[window_length:].shape)
+        # exit(0)
+
+        plot_lines(measurement=targets, real=real[window_length:-1],
+                   prediction=prediction, cin=cin[window_length:-1],
                    ref=ref[window_length+1:],
-                   plot_length=400, show=True)
+                   plot_length=400, show=False, save_path=result_dir_path, name=f'{model_name}-{f[:-4]}')
         # exit(0)
 
 
@@ -411,14 +432,31 @@ def detect_anomalies(window_length=50, cell_num=128, dense_dim=64, bidirection=F
 #            threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration
 
 wl = 50
-epo = 20
+epo = 40
 
-# train_model(window_length=wl-2, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=0)
-# detect_anomalies(window_length=wl, cell_num=64, dense_dim=64, bidirection=False, attn_layer=0)
+train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=0)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=0)
 
-# train_model(window_length=wl, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=1)
-# detect_anomalies(window_length=wl, cell_num=64, dense_dim=64, bidirection=False, attn_layer=1)
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=1)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=1)
+
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=True, attn_layer=0)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=True, attn_layer=0)
+
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=True, attn_layer=1)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=True, attn_layer=1)
 
 # train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=4)
-detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=4)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=4)
 
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=True, attn_layer=4)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=True, attn_layer=4)
+
+wl = 100
+epo = 40
+
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=0)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=0)
+
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=1)
+# detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=1)

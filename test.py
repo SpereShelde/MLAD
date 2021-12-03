@@ -6,10 +6,12 @@ import random
 import tensorflow as tf
 import pandas as pd
 
+df = pd.read_csv('test.csv')
 
-a = np.array([
-        [1,2,3],
-        [0,0,0],
-    ])
-a[:, 1] = 3
-print(a)
+length = df.shape[0]
+noise = np.random.normal(0, 0.01, length)
+
+df['x1'] += noise
+plt.plot(df['x1'])
+
+plt.show()
