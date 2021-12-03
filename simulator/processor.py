@@ -16,7 +16,10 @@ def scale_df(df, scalers):
     time_serials = df.to_numpy()
     scaled_time_serials = []
     for (i, scaler) in enumerate(scalers):
-        scaled_time_serials.append(scaler.transform(np.reshape(time_serials[:,i], [-1, 1])))
+        if scaler is not None:
+            scaled_time_serials.append(scaler.transform(np.reshape(time_serials[:, i], [-1, 1])))
+        else:
+            scaled_time_serials.append(np.reshape(time_serials[:, i], [-1, 1]))
     scaled_time_serials = np.hstack(scaled_time_serials)
     return pd.DataFrame(scaled_time_serials, columns=df.columns)
 
@@ -26,13 +29,14 @@ anomalous_file_names = [f for f in os.listdir('.') if f[-3:] == "csv" and f[:9] 
 raw_train_df = pd.concat((pd.read_csv(f) for f in benign_file_names), ignore_index=True)
 scalers = get_scalers(raw_train_df)
 
-for file in benign_file_names:
-    df = pd.read_csv(file)
-    scaled_df = scale_df(df, scalers)
-    scaled_df.to_csv(f'scaled-{file}', index=False)
+# for file in benign_file_names:
+#     df = pd.read_csv(file)
+#     scaled_df = scale_df(df, scalers)
+#     scaled_df.to_csv(f'scaled-{file}', index=False)
 
 for file in anomalous_file_names:
     df = pd.read_csv(file)
-    scaled_df = scale_df(df, scalers)
+    anomalous_scalers = scalers+scalers[1:4]+[None,None]
+    scaled_df = scale_df(df, anomalous_scalers)
     scaled_df.to_csv(f'scaled-{file}', index=False)
 

@@ -20,6 +20,10 @@ input_features = ['x1', 'x2', 'x3', 'cin']
 input_feature_ids = [1, 2, 3, 4]
 output_features = ['x1', 'x2', 'x3']
 output_feature_ids = [1, 2, 3]
+real_features = ['ux1', 'ux2', 'ux3']
+real_feature_ids = [5, 6, 7]
+cin_features = ['cin']
+cin_features_ids = [4]
 
 data_dir_path = os.path.join(ROOT_DIR, '..', 'data', 'simulator', simulator_model)
 result_dir_path = os.path.join(ROOT_DIR, 'results', 'simulator', simulator_model)
@@ -186,22 +190,30 @@ def print_loss(title, losses, features, path):
             break
 
 def plot_lines(**kwargs):
-    measurement = kwargs.get("measurement", None)
+    real = kwargs.get("real", None)
+    measurement = kwargs.get("measurement", None)  # real + anomaly
     prediction = kwargs.get("prediction", None)
-    anomaly = kwargs.get("anomaly", None)
+    cin = kwargs.get("cin", None)
+    ref = kwargs.get("ref", None)
 
-    if measurement is None:
-        print('Measurement is None, cannot plot')
+    if real is None:
+        print('Real is None, cannot plot')
         return
 
     if prediction is not None:
-        assert measurement.shape == prediction.shape
+        assert real.shape == prediction.shape
 
-    if anomaly is not None:
-        assert measurement.shape == anomaly.shape
+    if measurement is not None:
+        assert real.shape == measurement.shape
 
-    plot_length = kwargs.get("plot_length", measurement.shape[0])
-    feature_size = measurement.shape[1]
+    if cin is not None:
+        assert real.shape[0] == cin.shape[0]
+
+    if ref is not None:
+        assert real.shape[0] == ref.shape[0]
+
+    plot_length = kwargs.get("plot_length", real.shape[0])
+    feature_size = real.shape[1]
 
     x_axis = kwargs.get("x", np.arange(plot_length).reshape([-1,1]))
     one_graph_len = kwargs.get("one_graph_len", 400)
@@ -223,19 +235,25 @@ def plot_lines(**kwargs):
 
         for i in range(feature_size):
             if cols == 1:
-                ax[i].plot(x_axis, anomaly[ploted:to_plot, i], label='Anomaly', c='r', marker='.')
-                ax[i].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='b', marker='.')
+                ax[i].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
+                ax[i].plot(x_axis, real[ploted:to_plot, i], label='Real', c='b', marker='.')
                 ax[i].plot(x_axis, prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
+                if i == feature_size-1:
+                    ax[i].plot(x_axis, cin[ploted:to_plot], label='cin', c='y', marker='.')
+                    # ax[i].plot(x_axis, ref[ploted:to_plot], label='ref', c='orange', marker='.')
                 ax[i].legend(loc="upper right")
                 ax[i].set_title(f'{feature_names[i]}')
             else:
                 row = math.floor(i / cols)
                 col = i % cols
-                ax[row, col].plot(x_axis, anomaly[ploted:to_plot, i], label='Anomaly', c='r', marker='.')
-                ax[row, col].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='b', marker='.')
+                ax[row, col].plot(x_axis, measurement[ploted:to_plot, i], label='Measurement', c='r', marker='.')
+                ax[row, col].plot(x_axis, real[ploted:to_plot, i], label='Real', c='b', marker='.')
                 ax[row, col].plot(x_axis, prediction[ploted:to_plot, i], label='Prediction', c='g', marker='.')
+                if i == feature_size-1:
+                    ax[row, col].plot(x_axis, cin[ploted:to_plot], label='cin', c='y', marker='.')
                 ax[row, col].legend(loc="upper right")
                 ax[row, col].set_title(f'{feature_names[i]}')
+
         if show:
             plt.show()
         if save_pah is not None:
@@ -255,11 +273,21 @@ def detect_anomalies(window_length=50, cell_num=128, dense_dim=64, bidirection=F
     log(f'Use epoch {epoch_num_load} of {model_name} for anomaly detection')
     for f in normalized_anomalous_file_names:
         log(f'Scenario {f}')
-        df = pd.read_csv(os.path.join(data_dir_path, f))
-        inputs, targets = sample_from_df([df], window_length=window_length)
-        predicts = compute_outputs(inputs, model)
-
-        plot_lines(measurement=targets, )
+        complete_df = pd.read_csv(os.path.join(data_dir_path, f))
+        model_df = complete_df[all_features]
+        real_state_df = complete_df[real_features]
+        cin_df = complete_df[cin_features]
+        ref_df = complete_df['ref']
+        inputs, targets = sample_from_df([model_df], window_length=window_length, interval=1)
+        prediction = compute_outputs(inputs, model)
+        real = real_state_df.to_numpy()
+        cin = cin_df.to_numpy()
+        ref = ref_df.to_numpy()
+        plot_lines(measurement=targets, real=real[window_length+1:],
+                   prediction=prediction, cin=cin[window_length+1:],
+                   ref=ref[window_length+1:],
+                   plot_length=400, show=True)
+        # exit(0)
 
 
 
@@ -383,7 +411,14 @@ def detect_anomalies(window_length=50, cell_num=128, dense_dim=64, bidirection=F
 #            threshold_anomaly_detect_delay_avg, threshold_FP_per, anomaly_size, anomalous_duration, normal_duration
 
 wl = 50
-epo = 40
+epo = 20
 
-train_model(window_length=wl-2, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=0)
-train_model(window_length=wl, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=2)
+# train_model(window_length=wl-2, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=0)
+# detect_anomalies(window_length=wl, cell_num=64, dense_dim=64, bidirection=False, attn_layer=0)
+
+# train_model(window_length=wl, epochs=epo, cell_num=64, dense_dim=64, bidirection=False, attn_layer=1)
+# detect_anomalies(window_length=wl, cell_num=64, dense_dim=64, bidirection=False, attn_layer=1)
+
+# train_model(window_length=wl, epochs=epo, cell_num=48, dense_dim=48, bidirection=False, attn_layer=4)
+detect_anomalies(window_length=wl, cell_num=48, dense_dim=48, bidirection=False, attn_layer=4)
+

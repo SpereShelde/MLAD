@@ -152,7 +152,7 @@ exp.attacks['replay']['seed'] = 4 #4,8, until 51
 exp.y_label = 'Capacitor Voltage'
 
 # ------- Aircraft Pitch -------------
-seed = 11
+seed = 14
 random.seed(seed)
 np.random.seed(seed)
 
@@ -177,7 +177,7 @@ control_up = 7
 exp.control_limit = {'lo': np.array([control_lo]), 'up': np.array([control_up])}
 exp.epsilon = 1e-17
 exp.safeset = {'lo': np.array([-np.inf, -np.inf, -2.5]), 'up': np.array([np.inf, np.inf, 2.5])}
-exp.x_index = 2   # anomalous index
+exp.x_index = 0   # anomalous index
 
 # control
 exp.p = 14
@@ -207,12 +207,12 @@ attack_ends = attack_starts + attack_durations
 attack_ends = attack_ends[attack_ends < steps-50]
 attack_durations = attack_durations[:len(attack_ends)]
 attack_starts = attack_starts[:len(attack_ends)]
-attacK_types = np.random.choice([0, 1, 2], len(attack_ends))
+attack_types = np.random.choice([0, 1, 2], len(attack_ends))
 attack_values = []
 
-bias_up = 0.6
-bias_lo = 0.3
-for i, att in enumerate(attacK_types):
+bias_up = 0.2
+bias_lo = 0.1
+for i, att in enumerate(attack_types):
     if att == 0:
         bias = random.random() * (bias_up - bias_lo) + bias_lo
         direction = random.choice([-1,1])
@@ -226,7 +226,7 @@ for i, att in enumerate(attacK_types):
         replay = random.randint(int(duration*0.1), int(duration*0.3))
         attack_values.append(replay)
 
-exp.attacks = {'starts': attack_starts, 'ends': attack_ends, 'durations': attack_durations, 'types': attacK_types, 'values': attack_values}
+exp.attacks = {'starts': attack_starts, 'ends': attack_ends, 'durations': attack_durations, 'types': attack_types, 'values': attack_values}
 
 # graph
 exp.sep_graph = True

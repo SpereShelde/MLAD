@@ -206,12 +206,14 @@ if exp.sep_graph:
             if exp.subfig_shape[1] == 1:
                 ax[row].plot(x_measure_arr_att[ploted:to_plot, i], label='anomalous', c='r', marker='.')
                 ax[row].plot(x_measure_unatt_arr_att[ploted:to_plot, i], label='benign', c='b', marker='.')
-                # ax[row].plot(x_measure_arr[ploted:to_plot, i], label='benign', c='b', marker='.')
+                if i == x_measure_arr.shape[1]-1:
+                    # ax[row].plot(cin_arr_att[ploted:to_plot], label='cin', c='y', marker='.')
+                    ax[row].plot(ref[ploted:to_plot], label='reference', c='g', marker='.')
+                # ax[row].legend(loc="upper left")
+
             else:
                 ax[row, col].plot(x_measure_arr_att[ploted:to_plot, i], label='anomalous', c='r', marker='.')
-                # ax[row, col].plot(x_measure_arr[ploted:to_plot, i], label='benign', c='b', marker='.')
-                # ax[row].plot(x_measure_unatt_arr_att[ploted:to_plot, i], label='benign', c='b', marker='.')
-        ax[-1].plot(ref[ploted:to_plot], label='benign', c='g', marker='.')
+                ax[row, col].plot(x_measure_unatt_arr_att[ploted:to_plot, i], label='benign', c='b', marker='.')
 
         legend_elements = []
         for i, type in enumerate(att_types):
@@ -238,15 +240,15 @@ if exp.sep_graph:
                 legend_elements.append(Patch(facecolor='r', edgecolor='r', label=f'{type}-{value:0.2f}'))
 
                 if exp.subfig_shape[1] == 1:
-                    for j in range(x_measure_arr.shape[1]):
-                        ax[j].axvspan(span_start, span_end, facecolor='y', alpha=0.5)
+                    for j in range(len(ax)):
+                        ax[j].axvspan(span_start, span_end, facecolor='y', alpha=0.2)
                 else:
                     for j in range(exp.subfig_shape[0]):
                         for k in range(exp.subfig_shape[1]):
-                            ax[j, k].axvspan(span_start, span_end, facecolor='y', alpha=0.5)
+                            ax[j, k].axvspan(span_start, span_end, facecolor='y', alpha=0.2)
 
         if exp.subfig_shape[1] == 1:
-            for j in range(x_measure_arr.shape[1]):
+            for j in range(len(ax)):
                 ax[j].legend(handles=legend_elements, loc='upper right', fontsize=12)
 
         else:
